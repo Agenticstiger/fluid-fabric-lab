@@ -1,0 +1,48 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# OpenFGA v1.21.0 (chart 0.3.15), its own release on the lab CNPG cluster
+# Lakekeeper's chart-internal OpenFGA is off
+# (lakekeeper values: internalOpenFGA false). If v1.21.0 fails PG-3 the
+# fallback is v1.14, recorded in versions.lock.yaml; `lab check` (g) must prove
+# a DENIED request either way.
+#
+# REQUIRED: both Bitnami subcharts stay off (their images are denied).
+postgresql:
+  enabled: false
+mysql:
+  enabled: false
+replicaCount: 1
+image:
+  pullPolicy: IfNotPresent      # chart default Always would bypass the local mirror's digest pins
+datastore:
+  engine: postgres
+  # Secret lab-pg-openfga-uri (key uri: postgres://openfga:...@lab-pg-rw.lab-db.svc:5432/openfga?sslmode=require)
+  # is written by `lab up` (labctl/credentials.py) from the generated role password.
+  uriSecret: lab-pg-openfga-uri
+  applyMigrations: true
+  # initContainer runs `openfga migrate` with the OpenFGA image itself; the
+  # `job` type would add the unpinned groundnuty/k8s-wait-for image.
+  # waitForMigrations must stay true: chart 0.3.15 renders the initContainers
+  # block only when it is set (templates/deployment.yaml line 40).
+  migrationType: initContainer
+  waitForMigrations: true
+  migrations:
+    resources:
+      requests: {cpu: 20m, memory: 64Mi}
+      limits: {cpu: 250m, memory: 128Mi}
+authn:
+  method: preshared
+  preshared:
+    keysSecret: openfga-preshared-keys   # written by `lab up`; Lakekeeper reads the same key
+playground:
+  enabled: false
+telemetry:
+  metrics:
+    enabled: false
+http:
+  corsAllowedOrigins: []
+  corsAllowedHeaders: []
+resources:
+  requests: {cpu: 50m, memory: 64Mi}
+  limits: {cpu: 500m, memory: 128Mi}

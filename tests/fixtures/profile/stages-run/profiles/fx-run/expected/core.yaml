@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+# A ledger with stagesRun true may hold `passed` (with evidence) and other pending codes. profile_schema must PASS.
+schemaVersion: 1
+profile: fx-run
+tier: core
+stagesRun: true
+runners: [cli]
+products:
+  batch-demo:
+    summary: "Batch fixture product for the L0 selftest."
+    domains: [sales]
+    runners:
+      cli:
+        bundle: {status: pending, reasonCode: fixture_pending, reason: "Fixture cell for the L0 selftest."}
+        validate: {status: pending, reasonCode: fixture_pending, reason: "Fixture cell for the L0 selftest."}
+        generate-artifacts: {status: pending, reasonCode: fixture_pending, reason: "Fixture cell for the L0 selftest."}
+        validate-artifacts: {status: pending, reasonCode: fixture_pending, reason: "Fixture cell for the L0 selftest."}
+        diff: {status: pending, reasonCode: fixture_pending, reason: "Fixture cell for the L0 selftest."}
+        plan: {status: pending, reasonCode: fixture_pending, reason: "Fixture cell for the L0 selftest."}
+        apply: {status: pending, reasonCode: fixture_pending, reason: "Fixture cell for the L0 selftest."}
+        policy-apply: {status: pending, reasonCode: fixture_pending, reason: "Fixture cell for the L0 selftest."}
+        verify: {status: pending, reasonCode: fixture_pending, reason: "Fixture cell for the L0 selftest."}
+        publish: {status: pending, reasonCode: fixture_pending, reason: "Fixture cell for the L0 selftest."}
+        schedule-sync: {status: passed, reasonCode: fixture_claim, reason: "Fixture cell for the L0 selftest.", evidence: {run: fixture-run-1, date: "2026-01-01", report: conformance/reports/fixture.yaml}}

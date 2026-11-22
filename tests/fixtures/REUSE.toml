@@ -1,0 +1,17 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# Every file under tests/fixtures/ is an L0 fixture written by Agentics
+# (Apache-2.0). Planted cases deliberately carry wrong or missing licence
+# headers, synthetic denied-licence texts and vendor names, so this annotation
+# OVERRIDES whatever a fixture file says about itself when the repository is
+# linted. tools/l0/selftest copies each fixture to a temporary directory
+# before running a gate on it, so there the fixture's own (planted) headers
+# are what the gate sees.
+version = 1
+
+[[annotations]]
+path = ["**"]
+precedence = "override"
+SPDX-FileCopyrightText = "2026 Agentics Transformation Limited"
+SPDX-License-Identifier = "Apache-2.0"

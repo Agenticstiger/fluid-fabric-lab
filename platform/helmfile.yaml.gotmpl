@@ -1,0 +1,516 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# fluid-fabric-lab platform: one Helmfile release per component (the openDesk
+# pattern), rendered from the committed chart cache with no
+# network.
+#
+#   helmfile -f platform/helmfile.yaml.gotmpl -e <tier> template --skip-deps
+#
+# Tiers are the environments, generated from ../tiers.yaml; a tier renders
+# exactly its own releases plus those of the tiers it `requires`. Every chart is
+# a LOCAL PATH into platform/charts (there is no `repositories:` block, so no
+# `helm repo add/update`), and every image is templated from
+# ../versions.lock.yaml by digest; the component values files never name an
+# image. Optional add-ons (tiers.yaml optional_addons) are off by default:
+#
+#   --state-values-set addons.kafbat-ui=true     (needs the streaming tier)
+#
+# Pinned tools: helmfile v1.8.1; Helm v3.22.0 in CI (versions.lock.yaml tools).
+# Helm 4 with Helmfile is unverified upstream; the
+# render was also checked locally with Helm v4.3.0.
+
+{{- $tiersDoc := readFile "../tiers.yaml" | fromYaml }}
+
+environments:
+{{- range $name, $_ := $tiersDoc.tiers }}
+  {{ $name }}:
+    values:
+      - addons:
+          kafbat-ui: false
+          superset: false
+        # Lab-built images (never pushed, so no digest to pin) that `lab up` names with
+        # --state-values-set labImages.<name>=<tag>; empty in every offline render.
+        labImages:
+          airflow: ""
+{{- end }}
+
+---
+{{- $lock := readFile "../versions.lock.yaml" | fromYaml }}
+{{- $tiers := (readFile "../tiers.yaml" | fromYaml).tiers }}
+{{- $tier := .Environment.Name }}
+{{- if not (hasKey $tiers $tier) }}
+{{- fail (printf "unknown tier %q: pass -e with one of %s (tiers.yaml)" $tier (keys $tiers | sortAlpha | join ", ")) }}
+{{- end }}
+
+{{- /* Releases this tier turns on: its own plus every required tier's. */}}
+{{- $on := dict }}
+{{- range (index $tiers $tier).releases }}{{ $_ := set $on . true }}{{ end }}
+{{- range (index $tiers $tier).requires | default list }}
+{{-   range (index $tiers .).releases }}{{ $_ := set $on . true }}{{ end }}
+{{- end }}
+{{- $addons := .Values.addons }}
+{{- if index $addons "superset" }}
+{{- fail "addons.superset: not enableable. Both bundled subcharts are Bitnami (denied) and a usable Superset needs CNPG plus a non-Bitnami cache (tiers.yaml optional_addons.superset)." }}
+{{- end }}
+{{- range $name, $enabled := $addons }}
+{{-   if and $enabled (not (has $name (list "kafbat-ui" "superset"))) }}
+{{-     fail (printf "addons.%s: not a release of this Helmfile; only kafbat-ui is enableable here (tiers.yaml optional_addons)" $name) }}
+{{-   end }}
+{{- end }}
+{{- if and (index $addons "kafbat-ui") (not (hasKey $on "strimzi-kafka-operator")) }}
+{{- fail (printf "addons.kafbat-ui needs the streaming tier (tier %q has no Kafka)" $tier) }}
+{{- end }}
+{{- if index $addons "kafbat-ui" }}{{ $_ := set $on "kafka-ui" true }}{{ end }}
+
+{{- /* Lab-owned CR releases (chart components/lab-objects) follow the tier of
+       the operator release they need. */}}
+{{- $crParent := dict "lab-pki" "trust-manager" "lab-gateway" "envoy-gateway" "lab-postgres" "cloudnative-pg" "keycloak" "keycloak-operator" "kafka" "strimzi-kafka-operator" "lab-airflow" "airflow" }}
+{{- range $cr, $parent := $crParent }}{{ if hasKey $on $parent }}{{ $_ := set $on $cr true }}{{ end }}{{ end }}
+
+{{- /* Owning tier per release, for the `tier` label. */}}
+{{- $tierOf := dict }}
+{{- range $t := list "full" "e2e" "spark" "orchestration" "streaming" "core" }}
+{{-   range (index $tiers $t).releases }}{{ $_ := set $tierOf . $t }}{{ end }}
+{{- end }}
+{{- range $cr, $parent := $crParent }}{{ $_ := set $tierOf $cr (index $tierOf $parent) }}{{ end }}
+{{- $_ := set $tierOf "kafka-ui" "addon" }}
+
+{{- /* Chart cache: name -> lock entry. Only render_network none is accepted. */}}
+{{- $chart := dict }}
+{{- range $lock.charts }}
+{{-   if ne (toString .render_network) "none" }}{{ fail (printf "chart %s: render_network %v; the lab renders only from the offline cache" .name .render_network) }}{{ end }}
+{{-   $_ := set $chart .name . }}
+{{- end }}
+
+{{- /* Images: id -> pinned pieces. A used image must have a digest and must
+       not be denied. */}}
+{{- $img := dict }}
+{{- range $lock.images }}
+{{-   $_ := set $img .id (dict "ref" (printf "%s/%s:%s@%s" .registry .repository (toString .tag) .digest) "repo" (printf "%s/%s" .registry .repository) "registry" .registry "repository" .repository "tag" (toString .tag) "digest" .digest "use" .use) }}
+{{- end }}
+{{- range $id := list "cert-manager-controller" "cert-manager-webhook" "cert-manager-cainjector" "cert-manager-startupapicheck" "cert-manager-acmesolver" "trust-manager" "trust-pkg-debian-trixie" "envoy-gateway" "envoy-proxy" "envoy-ratelimit" "cnpg-operator" "cnpg-postgresql" "seaweedfs" "lakekeeper-catalog" "openfga" "keycloak-operator" "keycloak" "trino" "opa" "strimzi-operator" "strimzi-kafka" "strimzi-kafka-bridge" "strimzi-buildah" "strimzi-kaniko" "strimzi-maven-builder" "airflow" "kafbat-ui" "superset" }}
+{{-   if not (hasKey $img $id) }}{{ fail (printf "versions.lock.yaml has no image %q" $id) }}{{ end }}
+{{-   $i := index $img $id }}
+{{-   if eq $i.use "denied" }}{{ fail (printf "image %s is denied in versions.lock.yaml and must not be rendered" $id) }}{{ end }}
+{{-   if not (regexMatch "^sha256:[0-9a-f]{64}$" (toString $i.digest)) }}{{ fail (printf "image %s has no sha256 digest in versions.lock.yaml" $id) }}{{ end }}
+{{- end }}
+{{- /* connect-iceberg is not built (its lock digest is null), so the Connect image
+       stays the pinned Strimzi Kafka base; no KafkaConnect renders (components/kafka/values.yaml). */}}
+{{- $connectRef := (index $img "strimzi-kafka").ref }}
+{{- range $lock.built_images }}
+{{-   if and (eq .id "connect-iceberg") .digest }}
+{{-     if not .repository }}{{ fail "versions.lock.yaml built_images connect-iceberg has a digest but no repository" }}{{ end }}
+{{-     $connectRef = printf "%s@%s" .repository .digest }}
+{{-   end }}
+{{- end }}
+
+kubeVersion: {{ $lock.kubernetes_version }}
+
+helmDefaults:
+  skipDeps: true          # never `helm dependency build`: every dependency is vendored in the archive
+  createNamespace: true
+  wait: true
+  timeout: 600
+  # Helm test hooks reference images the lab never runs (alpine/kubectl,
+  # python, postgres test pods); they are not part of the platform.
+  templateArgs: ["--skip-tests"]
+
+releases:
+{{- /* Every cached chart gets a prepare hook that checks it against
+       versions.lock.yaml (archives) or platform/charts/SHA256SUMS (the
+       keycloak-operator directory) before Helm reads it. A mismatch fails the
+       render. Hooks run in the Helmfile's directory. */}}
+{{- define "lab.cacheHook" }}
+    hooks:
+      - events: ["prepare"]
+        showlogs: false
+        command: sh
+        args:
+          - -c
+{{-   if eq (toString .sha256) "dir" }}
+          - |
+            set -eu
+            cd charts
+            lines=$(grep "  $1/" SHA256SUMS || true)
+            [ -n "$lines" ] || { echo "chart cache: no SHA256SUMS lines for $1" >&2; exit 1; }
+            if command -v sha256sum >/dev/null 2>&1; then printf '%s\n' "$lines" | sha256sum -c --quiet -
+            else printf '%s\n' "$lines" | shasum -a 256 -c --quiet -; fi
+          - sh
+          - {{ base .file | quote }}
+{{-   else }}
+          - |
+            set -eu
+            if command -v sha256sum >/dev/null 2>&1; then got=$(sha256sum "$1"); else got=$(shasum -a 256 "$1"); fi
+            got=${got%% *}
+            [ "$got" = "$2" ] || { echo "chart cache: $1 is sha256:$got, versions.lock.yaml says sha256:$2" >&2; exit 1; }
+          - sh
+          - {{ printf "./%s" (trimPrefix "platform/" .file) | quote }}
+          - {{ .sha256 | quote }}
+{{-   end }}
+{{- end }}
+
+{{- /* ---------------------------------------------------------------- core */}}
+
+{{- if hasKey $on "cert-manager" }}
+{{- $c := index $chart "cert-manager" }}
+  - name: cert-manager
+    namespace: cert-manager
+    chart: ./{{ trimPrefix "platform/" $c.file }}
+    version: {{ $c.version }}
+    labels: {component: cert-manager, tier: {{ index $tierOf "cert-manager" }}}
+{{- include "lab.cacheHook" $c }}
+    values:
+      - components/cert-manager/values.yaml
+      - image:
+          repository: {{ (index $img "cert-manager-controller").repo }}
+          tag: {{ (index $img "cert-manager-controller").tag | quote }}
+          digest: {{ (index $img "cert-manager-controller").digest }}
+        webhook:
+          image:
+            repository: {{ (index $img "cert-manager-webhook").repo }}
+            tag: {{ (index $img "cert-manager-webhook").tag | quote }}
+            digest: {{ (index $img "cert-manager-webhook").digest }}
+        cainjector:
+          image:
+            repository: {{ (index $img "cert-manager-cainjector").repo }}
+            tag: {{ (index $img "cert-manager-cainjector").tag | quote }}
+            digest: {{ (index $img "cert-manager-cainjector").digest }}
+        startupapicheck:
+          image:
+            repository: {{ (index $img "cert-manager-startupapicheck").repo }}
+            tag: {{ (index $img "cert-manager-startupapicheck").tag | quote }}
+            digest: {{ (index $img "cert-manager-startupapicheck").digest }}
+        acmesolver:
+          image:
+            repository: {{ (index $img "cert-manager-acmesolver").repo }}
+            tag: {{ (index $img "cert-manager-acmesolver").tag | quote }}
+            digest: {{ (index $img "cert-manager-acmesolver").digest }}
+{{- end }}
+
+{{- if hasKey $on "trust-manager" }}
+{{- $c := index $chart "trust-manager" }}
+  - name: trust-manager
+    namespace: cert-manager
+    chart: ./{{ trimPrefix "platform/" $c.file }}
+    version: {{ $c.version }}
+    labels: {component: trust-manager, tier: {{ index $tierOf "trust-manager" }}}
+    needs: [cert-manager/cert-manager]
+{{- include "lab.cacheHook" $c }}
+    values:
+      - components/trust-manager/values.yaml
+      - image:
+          repository: {{ (index $img "trust-manager").repo }}
+          tag: {{ (index $img "trust-manager").tag | quote }}
+          digest: {{ (index $img "trust-manager").digest }}
+        defaultPackageImage:
+          repository: {{ (index $img "trust-pkg-debian-trixie").repo }}
+          tag: {{ (index $img "trust-pkg-debian-trixie").tag | quote }}
+          digest: {{ (index $img "trust-pkg-debian-trixie").digest }}
+{{- end }}
+
+{{- if hasKey $on "lab-pki" }}
+  - name: lab-pki
+    namespace: cert-manager
+    chart: ./components/lab-objects
+    labels: {component: lab-pki, tier: {{ index $tierOf "lab-pki" }}}
+    needs: [cert-manager/trust-manager]
+    values:
+      - components/lab-pki/values.yaml
+{{- end }}
+
+{{- if hasKey $on "envoy-gateway" }}
+{{- $c := index $chart "gateway-helm" }}
+  - name: envoy-gateway
+    namespace: envoy-gateway-system
+    chart: ./{{ trimPrefix "platform/" $c.file }}
+    version: {{ $c.version }}
+    labels: {component: gateway, tier: {{ index $tierOf "envoy-gateway" }}}
+{{- include "lab.cacheHook" $c }}
+    values:
+      - components/envoy-gateway/values.yaml
+      - global:
+          images:
+            envoyGateway:
+              image: {{ (index $img "envoy-gateway").ref }}
+              pullPolicy: IfNotPresent
+            envoyProxy:
+              image: {{ (index $img "envoy-proxy").ref }}
+              pullPolicy: IfNotPresent
+            ratelimit:
+              image: {{ (index $img "envoy-ratelimit").ref }}
+              pullPolicy: IfNotPresent
+{{- end }}
+
+{{- if hasKey $on "lab-gateway" }}
+  - name: lab-gateway
+    namespace: envoy-gateway-system
+    chart: ./components/lab-objects
+    labels: {component: lab-gateway, tier: {{ index $tierOf "lab-gateway" }}}
+    needs: [envoy-gateway-system/envoy-gateway, cert-manager/lab-pki]
+    values:
+      - components/lab-gateway/values.yaml
+      - images:
+          envoyProxy: {{ (index $img "envoy-proxy").ref }}
+{{- end }}
+
+{{- if hasKey $on "lab-spark" }}
+  - name: lab-spark
+    namespace: spark
+    chart: ./components/lab-objects
+    labels: {component: lab-spark, tier: {{ index $tierOf "lab-spark" }}}
+    needs: [cert-manager/lab-pki]
+    values:
+      - components/lab-spark/values.yaml.gotmpl
+{{- end }}
+
+{{- /* The e2e tier's objects (docs/e2e.md): the topic of products/stream-batch and
+       the read-back script of `lab check --tier e2e`. */}}
+{{- if hasKey $on "lab-e2e" }}
+  - name: lab-e2e
+    namespace: spark
+    chart: ./components/lab-objects
+    labels: {component: lab-e2e, tier: {{ index $tierOf "lab-e2e" }}}
+    needs: [spark/lab-spark, kafka/kafka]
+    values:
+      - components/lab-e2e/values.yaml.gotmpl
+{{- end }}
+
+{{- if hasKey $on "cloudnative-pg" }}
+{{- $c := index $chart "cloudnative-pg" }}
+  - name: cloudnative-pg
+    namespace: cnpg-system
+    chart: ./{{ trimPrefix "platform/" $c.file }}
+    version: {{ $c.version }}
+    labels: {component: cloudnative-pg, tier: {{ index $tierOf "cloudnative-pg" }}}
+{{- include "lab.cacheHook" $c }}
+    values:
+      - components/cloudnative-pg/values.yaml
+      - image:
+          repository: {{ (index $img "cnpg-operator").repo }}
+          tag: {{ printf "%s@%s" (index $img "cnpg-operator").tag (index $img "cnpg-operator").digest | quote }}
+        config:
+          data:
+            POSTGRES_IMAGE_NAME: {{ (index $img "cnpg-postgresql").ref }}
+{{- end }}
+
+{{- if hasKey $on "lab-postgres" }}
+  - name: lab-postgres
+    namespace: lab-db
+    chart: ./components/lab-objects
+    labels: {component: lab-postgres, tier: {{ index $tierOf "lab-postgres" }}}
+    needs: [cnpg-system/cloudnative-pg]
+    values:
+      - components/lab-postgres/values.yaml
+      - images:
+          postgresql: {{ (index $img "cnpg-postgresql").ref }}
+{{- end }}
+
+{{- if hasKey $on "seaweedfs" }}
+{{- $c := index $chart "seaweedfs" }}
+  - name: seaweedfs
+    namespace: seaweedfs
+    chart: ./{{ trimPrefix "platform/" $c.file }}
+    version: {{ $c.version }}
+    labels: {component: seaweedfs, tier: {{ index $tierOf "seaweedfs" }}}
+{{- include "lab.cacheHook" $c }}
+    values:
+      - components/seaweedfs/values.yaml
+      - image:
+          registry: {{ (index $img "seaweedfs").registry }}
+          repository: {{ (index $img "seaweedfs").repository }}
+          tag: {{ printf "%s@%s" (index $img "seaweedfs").tag (index $img "seaweedfs").digest | quote }}
+{{- end }}
+
+{{- if hasKey $on "openfga" }}
+{{- $c := index $chart "openfga" }}
+  - name: openfga
+    namespace: openfga
+    chart: ./{{ trimPrefix "platform/" $c.file }}
+    version: {{ $c.version }}
+    labels: {component: openfga, tier: {{ index $tierOf "openfga" }}}
+    needs: [lab-db/lab-postgres]
+{{- include "lab.cacheHook" $c }}
+    values:
+      - components/openfga/values.yaml
+      - image:
+          repository: {{ (index $img "openfga").repo }}
+          tag: {{ printf "%s@%s" (index $img "openfga").tag (index $img "openfga").digest | quote }}
+{{- end }}
+
+{{- if hasKey $on "lakekeeper" }}
+{{- $c := index $chart "lakekeeper" }}
+  - name: lakekeeper
+    namespace: lakekeeper
+    chart: ./{{ trimPrefix "platform/" $c.file }}
+    version: {{ $c.version | quote }}
+    labels: {component: lakekeeper, tier: {{ index $tierOf "lakekeeper" }}}
+    # lab-pki: the pod mounts ConfigMap lab-ca-bundle, which exists only once
+    # trust-manager and the lab CA issuer are up.
+    needs: [lab-db/lab-postgres, openfga/openfga, cert-manager/lab-pki]
+{{- include "lab.cacheHook" $c }}
+    values:
+      - components/lakekeeper/values.yaml
+      - catalog:
+          image:
+            repository: {{ (index $img "lakekeeper-catalog").repo }}
+            tag: {{ printf "%s@%s" (index $img "lakekeeper-catalog").tag (index $img "lakekeeper-catalog").digest | quote }}
+{{- end }}
+
+{{- if hasKey $on "keycloak-operator" }}
+{{- $c := index $chart "keycloak-operator" }}
+  - name: keycloak-operator
+    namespace: keycloak
+    chart: ./{{ trimPrefix "platform/" $c.file }}
+    version: {{ $c.version | quote }}
+    labels: {component: keycloak, tier: {{ index $tierOf "keycloak-operator" }}}
+{{- include "lab.cacheHook" $c }}
+    values:
+      - components/keycloak-operator/values.yaml
+      - operator:
+          image: {{ (index $img "keycloak-operator").ref }}
+        keycloak:
+          image: {{ (index $img "keycloak").ref }}
+{{- end }}
+
+{{- if hasKey $on "keycloak" }}
+  - name: keycloak
+    namespace: keycloak
+    chart: ./components/lab-objects
+    labels: {component: keycloak, tier: {{ index $tierOf "keycloak" }}}
+    needs: [keycloak/keycloak-operator, lab-db/lab-postgres, cert-manager/lab-pki]
+    values:
+      - components/keycloak/values.yaml
+      - identity/realm-import.yaml
+      - images:
+          keycloak: {{ (index $img "keycloak").ref }}
+{{- end }}
+
+{{- if hasKey $on "trino" }}
+{{- $c := index $chart "trino" }}
+  - name: trino
+    namespace: trino
+    chart: ./{{ trimPrefix "platform/" $c.file }}
+    version: {{ $c.version }}
+    labels: {component: trino, tier: {{ index $tierOf "trino" }}}
+    needs: [cert-manager/lab-pki]   # the coordinator mounts ConfigMap lab-ca-bundle (its truststore)
+{{- include "lab.cacheHook" $c }}
+    values:
+      - components/trino/values.yaml
+      - components/trino/lab-extras.yaml.gotmpl
+      - image:
+          registry: {{ (index $img "trino").registry }}
+          repository: {{ (index $img "trino").repository }}
+          tag: {{ (index $img "trino").tag | quote }}
+          digest: {{ (index $img "trino").digest }}
+        opa:
+          image: {{ (index $img "opa").ref }}
+{{- end }}
+
+{{- /* ----------------------------------------------------------- streaming */}}
+
+{{- if hasKey $on "strimzi-kafka-operator" }}
+{{- $c := index $chart "strimzi-kafka-operator" }}
+{{- $op := index $img "strimzi-operator" }}
+{{- $kafka := index $img "strimzi-kafka" }}
+  - name: strimzi-kafka-operator
+    namespace: strimzi
+    chart: ./{{ trimPrefix "platform/" $c.file }}
+    version: {{ $c.version | quote }}
+    labels: {component: strimzi, tier: {{ index $tierOf "strimzi-kafka-operator" }}}
+{{- include "lab.cacheHook" $c }}
+    values:
+      - components/strimzi-kafka-operator/values.yaml
+      - defaultImageRegistry: {{ $op.registry }}
+        defaultImageRepository: strimzi
+        defaultImageTag: {{ $op.tag | quote }}
+        image: {digest: {{ $op.digest }}}
+        topicOperator: {image: {digest: {{ $op.digest }}}}
+        userOperator: {image: {digest: {{ $op.digest }}}}
+        kafkaInit: {image: {digest: {{ $op.digest }}}}
+        kafkaBridge: {image: {digest: {{ (index $img "strimzi-kafka-bridge").digest }}}}
+        kanikoExecutor: {image: {digest: {{ (index $img "strimzi-kaniko").digest }}}}
+        buildah: {image: {digest: {{ (index $img "strimzi-buildah").digest }}}}
+        mavenBuilder: {image: {digest: {{ (index $img "strimzi-maven-builder").digest }}}}
+        # Single-version images (both use the -kafka-4.3.1 tag the lock pins).
+        kafkaExporter: {image: {digest: {{ $kafka.digest }}}}
+        cruiseControl: {image: {digest: {{ $kafka.digest }}}}
+{{- end }}
+
+{{- if hasKey $on "kafka" }}
+  - name: kafka
+    namespace: kafka
+    chart: ./components/lab-objects
+    labels: {component: kafka, tier: {{ index $tierOf "kafka" }}}
+    needs: [strimzi/strimzi-kafka-operator, cert-manager/lab-pki]   # lab-pki: ClusterIssuer of the listener certificate
+    values:
+      - components/kafka/values.yaml
+      - images:
+          kafka: {{ (index $img "strimzi-kafka").ref }}
+          strimziOperator: {{ (index $img "strimzi-operator").ref }}
+          connect: {{ $connectRef }}
+{{- end }}
+
+{{- if hasKey $on "kafka-ui" }}
+{{- $c := index $chart "kafka-ui" }}
+  - name: kafka-ui
+    namespace: kafka
+    chart: ./{{ trimPrefix "platform/" $c.file }}
+    version: {{ $c.version | quote }}
+    labels: {component: kafbat-ui, tier: addon}
+    needs: [kafka/kafka]
+{{- include "lab.cacheHook" $c }}
+    values:
+      - components/kafka-ui/values.yaml
+      - image:
+          registry: {{ (index $img "kafbat-ui").registry }}
+          repository: {{ (index $img "kafbat-ui").repository }}
+          tag: {{ printf "%s@%s" (index $img "kafbat-ui").tag (index $img "kafbat-ui").digest | quote }}
+{{- end }}
+
+{{- /* ------------------------------------------------------- orchestration */}}
+
+{{- if hasKey $on "airflow" }}
+{{- $c := index $chart "airflow" }}
+{{- /* The chart renders the pinned `airflow` image (apache/airflow:3.2.2 by digest): that is what the L0 gates read
+       (every rendered image is a lock digest). `lab up` runs the lab-built airflow-fluid image instead (that
+       base plus forge, platform/images/airflow-fluid): it passes its tag, from labctl.build.tag_for,
+       as `labImages.airflow`, and the pods then use it with imagePullPolicy Never (it is never pushed). */}}
+{{- $lab := .Values.labImages.airflow | default "" }}
+{{- $labRepo := ternary (first (splitList ":" $lab)) "" (ne $lab "") }}
+{{- $labTag := ternary (last (splitList ":" $lab)) "" (ne $lab "") }}
+  - name: lab-airflow
+    namespace: airflow
+    chart: ./components/lab-objects
+    labels: {component: airflow, tier: {{ index $tierOf "lab-airflow" }}}
+    needs: [cert-manager/lab-pki]
+    values:
+      - components/lab-airflow/values.yaml.gotmpl
+  - name: airflow
+    namespace: airflow
+    chart: ./{{ trimPrefix "platform/" $c.file }}
+    version: {{ $c.version | quote }}
+    labels: {component: airflow, tier: {{ index $tierOf "airflow" }}}
+    needs: [lab-db/lab-postgres, airflow/lab-airflow, cert-manager/lab-pki]
+{{- include "lab.cacheHook" $c }}
+    values:
+      - components/airflow/values.yaml
+{{- if $lab }}
+      - defaultAirflowRepository: {{ $labRepo }}
+        defaultAirflowTag: {{ $labTag | quote }}
+        images:
+          airflow:
+            repository: {{ $labRepo }}
+            tag: {{ $labTag | quote }}
+            pullPolicy: Never
+{{- else }}
+      - defaultAirflowRepository: {{ (index $img "airflow").repo }}
+        defaultAirflowTag: {{ (index $img "airflow").tag | quote }}
+        defaultAirflowDigest: {{ (index $img "airflow").digest }}
+        images:
+          airflow:
+            repository: {{ (index $img "airflow").repo }}
+            tag: {{ (index $img "airflow").tag | quote }}
+            digest: {{ (index $img "airflow").digest }}
+{{- end }}
+{{- end }}

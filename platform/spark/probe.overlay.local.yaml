@@ -1,0 +1,12 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# The `--env local` overlay of the probe contract (shipped to overlays/local.yaml
+# beside it in fluid-host): the base contract's values, restated, so `--env
+# local` names a real overlay, as products/stream-batch/overlays/local.yaml does.
+builds:
+  - id: daily-curated
+    properties:
+      parameters:
+        spark:
+          runtime: local

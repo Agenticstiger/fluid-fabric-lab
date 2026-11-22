@@ -1,0 +1,199 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# The streaming add-on's Kafka: one Strimzi cluster `lab-kafka` in namespace
+# `kafka`, KRaft with one KafkaNodePool node holding the controller and broker
+# roles, and the entity operator (topics and users). Strimzi kafka.strimzi.io/v1.
+#
+# Based on Strimzi 1.2.0's own examples (Apache-2.0), tag 1.2.0 of
+# github.com/strimzi/strimzi-kafka-operator:
+#   examples/kafka/kafka-single-node.yaml             node pool, Kafka CR, plain and tls listeners
+#   examples/security/scram-sha-512-auth/kafka.yaml   SCRAM-SHA-512 listener, `simple` authorization
+#   docs "Using your own certificates" (listener configuration.brokerCertChainAndKey)
+#
+# Listeners (both internal):
+#   plain  9092  no TLS, no authentication. forge 0.32.0's Spark Kafka source
+#                (fluid_build/spark/compiler.py `_kafka`) supports only `auth:
+#                none` and `msk-iam`, so the stream needs it. RECORDED GAP: forge's
+#                Kafka source has no SCRAM or mTLS (docs/streaming-tier.md).
+#   tls    9093  TLS with a certificate from the lab CA (ClusterIssuer lab-ca, via
+#                cert-manager, below); SCRAM-SHA-512 authentication.
+#
+# Authorization `simple` with allow.everyone.if.no.acl.found=true: a topic with no
+# ACL stays open to the stream's anonymous reads; a topic with ACLs is enforced.
+# Without `authorization`, Strimzi enables none and ACLs would never be checked.
+#
+# Images are lock digests, never bare tags: spec.kafka.image, both entity-operator
+# containers (the operator image carries the topic and user operators), and the
+# operator's own default-image environment (platform/helmfile.yaml.gotmpl). The
+# chart's per-version map STRIMZI_KAFKA_IMAGES stays at tags on purpose (see
+# components/strimzi-kafka-operator/values.yaml); this CR's `image:` wins over it.
+#
+# Pod Security `restricted`: every container's security context is set here
+# explicitly instead of relying on the operator's defaults. UNMEASURED until the
+# first live run (docs/streaming-tier.md).
+#
+# KafkaConnect (two clusters, sales and hr) is NOT here: the connect-iceberg
+# image is not built (versions.lock.yaml built_images, digest null).
+objects:
+  05-listener-certificate:
+    apiVersion: cert-manager.io/v1
+    kind: Certificate
+    metadata: {name: lab-kafka-listener}
+    spec:
+      secretName: lab-kafka-listener-tls
+      issuerRef: {name: lab-ca, kind: ClusterIssuer, group: cert-manager.io}
+      # Strimzi reads the key as PKCS#8; the chain in tls.crt is leaf, then lab CA.
+      privateKey: {algorithm: RSA, size: 2048, encoding: PKCS8, rotationPolicy: Always}
+      usages: [digital signature, key encipherment, server auth]
+      dnsNames:
+        - lab-kafka-kafka-bootstrap
+        - lab-kafka-kafka-bootstrap.kafka
+        - lab-kafka-kafka-bootstrap.kafka.svc
+        - lab-kafka-kafka-bootstrap.kafka.svc.cluster.local
+        - "*.lab-kafka-kafka-brokers"
+        - "*.lab-kafka-kafka-brokers.kafka"
+        - "*.lab-kafka-kafka-brokers.kafka.svc"
+        - "*.lab-kafka-kafka-brokers.kafka.svc.cluster.local"
+  10-nodepool:
+    apiVersion: kafka.strimzi.io/v1
+    kind: KafkaNodePool
+    metadata:
+      name: dual
+      labels: {strimzi.io/cluster: lab-kafka}
+    spec:
+      replicas: 1
+      roles: [controller, broker]
+      storage:
+        type: jbod
+        volumes:
+          - {id: 0, type: persistent-claim, size: 5Gi, deleteClaim: true, kraftMetadata: shared}
+      jvmOptions:
+        "-Xms": 256m
+        "-Xmx": 512m
+      resources:
+        requests: {cpu: 200m, memory: 768Mi}
+        limits: {cpu: "1", memory: 1Gi}
+      template:
+        pod:
+          securityContext: {runAsNonRoot: true, seccompProfile: {type: RuntimeDefault}}
+        kafkaContainer:
+          securityContext: &restricted
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL]}
+            runAsNonRoot: true
+            seccompProfile: {type: RuntimeDefault}
+        initContainer:
+          securityContext: *restricted
+  20-kafka:
+    apiVersion: kafka.strimzi.io/v1
+    kind: Kafka
+    metadata: {name: lab-kafka}
+    spec:
+      kafka:
+        version: 4.3.1
+        metadataVersion: 4.3-IV0
+        image: '{{ .Values.images.kafka }}'
+        listeners:
+          - name: plain
+            port: 9092
+            type: internal
+            tls: false
+          - name: tls
+            port: 9093
+            type: internal
+            tls: true
+            authentication: {type: scram-sha-512}
+            configuration:
+              brokerCertChainAndKey: {secretName: lab-kafka-listener-tls, certificate: tls.crt, key: tls.key}
+        authorization:
+          type: simple
+        config:
+          allow.everyone.if.no.acl.found: "true"
+          offsets.topic.replication.factor: 1
+          transaction.state.log.replication.factor: 1
+          transaction.state.log.min.isr: 1
+          default.replication.factor: 1
+          min.insync.replicas: 1
+          auto.create.topics.enable: false
+      entityOperator:
+        topicOperator:
+          image: '{{ .Values.images.strimziOperator }}'
+          resources:
+            requests: {cpu: 50m, memory: 192Mi}
+            limits: {cpu: 500m, memory: 256Mi}
+        userOperator:
+          image: '{{ .Values.images.strimziOperator }}'
+          resources:
+            requests: {cpu: 50m, memory: 192Mi}
+            limits: {cpu: 500m, memory: 256Mi}
+        template:
+          pod:
+            securityContext: {runAsNonRoot: true, seccompProfile: {type: RuntimeDefault}}
+          topicOperatorContainer:
+            securityContext: *restricted
+          userOperatorContainer:
+            securityContext: *restricted
+  30-topic-events:
+    apiVersion: kafka.strimzi.io/v1
+    kind: KafkaTopic
+    metadata:
+      name: lab-check.events
+      labels: {strimzi.io/cluster: lab-kafka}
+    spec:
+      partitions: 1
+      replicas: 1
+      config: {retention.ms: "86400000"}   # the check's open topic: no ACLs, anonymous on `plain`
+  31-topic-restricted:
+    apiVersion: kafka.strimzi.io/v1
+    kind: KafkaTopic
+    metadata:
+      name: lab-check.restricted
+      labels: {strimzi.io/cluster: lab-kafka}
+    spec:
+      partitions: 1
+      replicas: 1
+      config: {retention.ms: "86400000"}   # the ACLs below make `simple` authorization enforce it
+  40-user-writer:
+    apiVersion: kafka.strimzi.io/v1
+    kind: KafkaUser
+    metadata:
+      name: lab-check-writer
+      labels: {strimzi.io/cluster: lab-kafka}
+    spec:
+      authentication: {type: scram-sha-512}   # Strimzi generates the password into Secret lab-check-writer
+      authorization:
+        type: simple
+        acls:
+          - resource: {type: topic, name: lab-check.restricted, patternType: literal}
+            operations: [Write, Describe]
+          # An ACL on the cluster resource switches off allow.everyone.if.no.acl.found for it:
+          # without one, User:ANONYMOUS on `plain` holds every cluster operation (CreateAcls,
+          # DeleteAcls, AlterUserScramCredentials, AlterConfigs), which would undo the topic ACLs.
+          - resource: {type: cluster}
+            operations: [Describe]
+  42-user-kafka-ui:      # for the optional kafbat UI (addons.kafbat-ui); not read-only, see below
+    apiVersion: kafka.strimzi.io/v1
+    kind: KafkaUser
+    metadata:
+      name: kafka-ui
+      labels: {strimzi.io/cluster: lab-kafka}
+    spec:
+      authentication: {type: scram-sha-512}   # Strimzi generates Secret kafka-ui (password, sasl.jaas.config)
+      authorization:
+        type: simple
+        acls:
+          # Cluster only. NO topic or group ACL here, not even on "*" or a prefix: an ACL that matches a
+          # resource switches off allow.everyone.if.no.acl.found for it, and a "*" topic ACL matched every
+          # topic, so anonymous clients on `plain` lost `lab-check.events` (seen live 2026-11-19: the
+          # check's get-offsets found no topic). The UI sees the topics that have no ACL, as everyone does.
+          - resource: {type: cluster}
+            operations: [Describe, DescribeConfigs]
+  41-user-nobody:
+    apiVersion: kafka.strimzi.io/v1
+    kind: KafkaUser
+    metadata:
+      name: lab-check-nobody
+      labels: {strimzi.io/cluster: lab-kafka}
+    spec:
+      authentication: {type: scram-sha-512}   # no ACLs at all

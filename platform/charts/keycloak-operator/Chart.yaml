@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# Minimal local wrapper chart around the Keycloak Operator's raw install
+# manifests. Upstream ships no Helm chart for the operator; it publishes the
+# CRDs and kubernetes.yml per tag in keycloak/keycloak-k8s-resources
+# (https://www.keycloak.org/operator/installation, "Installing by using kubectl
+# without Operator Lifecycle Manager"). The upstream files under crds/ and
+# upstream/ are byte-identical copies; only templates/operator.yaml is ours.
+apiVersion: v2
+name: keycloak-operator
+description: Keycloak Operator 26.8.0 install manifests (upstream keycloak/keycloak-k8s-resources@26.8.0), wrapped for Helmfile
+type: application
+version: 26.8.0
+appVersion: "26.8.0"
+home: https://www.keycloak.org/operator/installation
+sources:
+  - https://github.com/keycloak/keycloak-k8s-resources/tree/44077f21fbe3af2e8b7fca0312c866c43ff7889b/kubernetes
+annotations:
+  fluid-fabric-lab/upstream-repo: https://github.com/keycloak/keycloak-k8s-resources
+  fluid-fabric-lab/upstream-ref: 26.8.0
+  fluid-fabric-lab/upstream-commit: 44077f21fbe3af2e8b7fca0312c866c43ff7889b
+  fluid-fabric-lab/upstream-license: Apache-2.0

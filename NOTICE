@@ -1,0 +1,84 @@
+fluid-fabric-lab
+Copyright 2026 Agentics Transformation Limited
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+Third-party material carried in this repository keeps its own licence. The
+vendored Helm chart cache (platform/charts/), the vendored Kubernetes JSON
+schemas (platform/schemas/) and the runtime images the lab references are
+listed, with their licences and sources, in THIRD-PARTY.md. Each vendored
+file's licence is also recorded in a REUSE.toml annotation, and every licence
+text used is in LICENSES/ or platform/charts/upstream-licenses/.
+
+=======================================================================
+
+The Apache Airflow Helm chart (platform/charts/airflow-1.22.0.tgz) ships the
+following NOTICE, reproduced unmodified from airflow/NOTICE in that archive:
+
+  Apache Airflow
+  Copyright 2016-2026 The Apache Software Foundation
+
+  This product includes software developed at The Apache Software
+  Foundation (http://www.apache.org/).
+  =======================================================================
+
+  postgresql:
+  -----
+  This product contains vendored-in postgresql Helm chart.
+
+  Copyright © 2022 Bitnami
+
+  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at
+
+  http://www.apache.org/licenses/LICENSE-2.0
+  Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
+
+=======================================================================
+
+platform/identity/realm-import.yaml adapts material from Lakekeeper
+(https://github.com/lakekeeper/lakekeeper, read at tag v0.14.0), which is
+licensed under the Apache License, Version 2.0. Its NOTICE file, reproduced
+unmodified:
+
+  Lakekeeper
+  Copyright 2024-2026 Vakamo Inc.
+
+  This product includes software developed at
+  The Apache Software Foundation (http://www.apache.org/)
+
+=======================================================================
+
+Portions of this repository are adapted from AQUIFER
+(https://github.com/doochman/aquifer, read at commit
+0a809b6ecfa2d0d59bd766ef05aba233b6e885b2), which is licensed under the MIT
+License. Every file containing adapted AQUIFER material names
+"Christopher Ducci and the AQUIFER contributors" as a copyright holder and
+includes MIT in its licence expression, in its REUSE header or REUSE.toml
+annotation. At the time of writing that is:
+
+  - PRODUCTION-READINESS.md (NO-GO banner, release-gate table structure and
+    safe-migration-order section, rewritten for this lab's components)
+
+The AQUIFER copyright and permission notice, as required by the MIT License:
+
+  MIT License
+
+  Copyright (c) 2026 Christopher Ducci and the AQUIFER contributors
+
+  Permission is hereby granted, free of charge, to any person obtaining a copy
+  of this software and associated documentation files (the "Software"), to deal
+  in the Software without restriction, including without limitation the rights
+  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+  copies of the Software, and to permit persons to whom the Software is
+  furnished to do so, subject to the following conditions:
+
+  The above copyright notice and this permission notice shall be included in all
+  copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+  SOFTWARE.

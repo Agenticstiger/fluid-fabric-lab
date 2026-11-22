@@ -1,0 +1,41 @@
+{{- /*
+SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+SPDX-License-Identifier: Apache-2.0
+
+Renders upstream/kubernetes.yml (Keycloak Operator 26.8.0, unmodified on disk)
+into the release namespace. This mirrors what upstream's own
+kubernetes/kustomization.yml does with kustomize's NamespaceTransformer
+(namespace on every namespaced object, setRoleBindingSubjects:
+allServiceAccounts), so no kustomize binary is needed. It then applies the
+image and pull-policy values. Nothing else is changed.
+*/ -}}
+{{- $ns := .Release.Namespace -}}
+{{- $clusterScoped := list "ClusterRole" "ClusterRoleBinding" "CustomResourceDefinition" -}}
+{{- $raw := .Files.Get "upstream/kubernetes.yml" -}}
+{{- if not $raw }}{{ fail "keycloak-operator: upstream/kubernetes.yml missing from the chart" }}{{ end -}}
+{{- range $doc := regexSplit "(?m)^---[ \t]*$" $raw -1 }}
+{{- $o := fromYaml $doc }}
+{{- if and $o (hasKey $o "kind") }}
+{{- if hasKey $o "Error" }}{{ fail (printf "keycloak-operator: cannot parse upstream document: %s" $o.Error) }}{{ end }}
+{{- if not (has $o.kind $clusterScoped) }}
+{{- $_ := set $o.metadata "namespace" $ns }}
+{{- end }}
+{{- range $s := ($o.subjects | default list) }}
+{{- if eq $s.kind "ServiceAccount" }}{{ $_ := set $s "namespace" $ns }}{{ end }}
+{{- end }}
+{{- if eq $o.kind "Deployment" }}
+{{- range $c := $o.spec.template.spec.containers }}
+{{- if eq $c.name "keycloak-operator" }}
+{{- $_ := set $c "image" $.Values.operator.image }}
+{{- $_ := set $c "imagePullPolicy" $.Values.operator.imagePullPolicy }}
+{{- if $.Values.operator.resources }}{{ $_ := set $c "resources" $.Values.operator.resources }}{{ end }}
+{{- range $e := $c.env }}
+{{- if or (eq $e.name "kc.operator.keycloak.image") (eq $e.name "RELATED_IMAGE_KEYCLOAK") }}{{ $_ := set $e "value" $.Values.keycloak.image }}{{ end }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+---
+{{ toYaml $o }}
+{{- end }}
+{{- end }}

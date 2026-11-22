@@ -1,0 +1,10 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# PLANTED: a floating :latest image in a CNPG Cluster CR. Must FAIL.
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata: {name: pg, namespace: fixture}
+spec:
+  instances: 1
+  imageName: ghcr.io/cloudnative-pg/postgresql:latest

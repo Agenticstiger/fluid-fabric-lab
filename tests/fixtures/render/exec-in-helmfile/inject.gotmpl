@@ -1,0 +1,4 @@
+{{/* SPDX-FileCopyrightText: 2026 Agentics Transformation Limited */}}
+{{/* SPDX-License-Identifier: Apache-2.0 */}}
+{{/* PLANTED: inserted into a copy of the Helmfile. The render gate must FAIL before running it. */}}
+{{- $_ := exec "curl" (list "--noproxy" "*" "-s" "http://127.0.0.1:9/") }}

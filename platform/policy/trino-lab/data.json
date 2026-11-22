@@ -1,0 +1,11 @@
+{
+  "principals": {
+    "fluid-pipeline": {
+      "lakehouse": {
+        "events_raw": "read",
+        "events_curated": "read",
+        "events_marts": "write"
+      }
+    }
+  }
+}

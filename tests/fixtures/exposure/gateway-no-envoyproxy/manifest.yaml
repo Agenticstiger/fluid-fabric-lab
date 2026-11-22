@@ -1,0 +1,12 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# PLANTED (a Gateway with no EnvoyProxy: Envoy Gateway would give it a
+# LoadBalancer Service). L0 selftest: the exposure gate must FAIL.
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata: {name: lab, namespace: envoy-gateway-system}
+spec:
+  gatewayClassName: lab
+  listeners:
+    - {name: https, protocol: HTTPS, port: 443}

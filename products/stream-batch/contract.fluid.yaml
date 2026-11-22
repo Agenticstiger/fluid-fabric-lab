@@ -1,0 +1,122 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# The lab's end-to-end product (docs/e2e.md): a Kafka topic landed in Iceberg by
+# a Spark Structured Streaming job, and one Spark SQL batch over what it landed.
+# `lab check --tier e2e` runs it through forge (validate, plan, apply) in the
+# lab's fluid-host pod with `--env local`, and reads the rows back.
+#
+#   events-stream  Kafka topic lab-e2e.events -> e2e_raw.events (always on,
+#                  started by `fluid apply`, a micro-batch every 10 seconds)
+#   daily-counts   e2e_raw.events -> e2e_curated.events_daily (a batch, run by
+#                  `fluid apply --mode amend-and-build --build-id daily-counts`,
+#                  as a scheduler would)
+#
+# Spark runs on the lab's open runtime (Apache Spark 3.5.8 with Iceberg 1.12.0,
+# the `spark` tier), against Lakekeeper's Iceberg REST catalog with vended
+# credentials, and SeaweedFS for the stream's checkpoint (forge keeps a local
+# stream's checkpoint under `_checkpoints/<product>/`). Every event carries
+# the check run's id, so each run counts only its own rows.
+fluidVersion: "0.7.7"
+kind: DataProduct
+id: lab.stream-batch
+name: Stream and batch
+description: >-
+  Events from a Kafka topic, landed in an Iceberg table by a Spark stream, and
+  a count per run and event date by a Spark SQL batch.
+domain: lab
+metadata:
+  layer: Silver
+  owner:
+    team: data-platform
+environments:
+  local: {}
+builds:
+  - id: events-stream
+    description: Kafka topic lab-e2e.events to the raw Iceberg table, every 10 seconds.
+    engine: spark
+    pattern: embedded-logic
+    outputs: [events_raw]
+    properties:
+      stream:
+        kind: kafka
+        topic: lab-e2e.events
+        format: json
+        schema:
+          - {name: event_id, type: string, required: true}
+          - {name: run_id, type: string}
+          - {name: user_id, type: string}
+          - {name: event_time, type: timestamp_ltz(3)}
+        trigger:
+          processingTime: PT10S
+        watermark:
+          column: event_time
+          delay: PT10M
+        checkpoint: s3://lab-spark-artifacts/_checkpoints/lab.stream-batch/events-stream/
+        startingOffsets: earliest
+      mapping:
+        columns:
+          - {name: event_id, from: event_id}
+          - {name: run_id, from: run_id}
+          - {name: user_id, from: user_id}
+          - {name: event_time, from: event_time}
+      parameters:
+        spark:
+          runtime: local
+          mode: streaming
+          source:
+            bootstrapServers: lab-kafka-kafka-bootstrap.kafka.svc:9092
+            auth: none
+  - id: daily-counts
+    description: Events per run and event date, from the raw table.
+    engine: spark
+    pattern: embedded-logic
+    outputs: [events_daily]
+    dependencies:
+      - buildId: events-stream
+    execution:
+      trigger:
+        type: schedule
+        schedule: "0 2 * * *"
+    properties:
+      sql: >-
+        SELECT run_id, CAST(event_time AS DATE) AS event_date, COUNT(*) AS events
+        FROM e2e_raw.events GROUP BY run_id, CAST(event_time AS DATE)
+      parameters:
+        spark:
+          runtime: local
+          mode: batch
+exposes:
+  - exposeId: events_raw
+    kind: table
+    binding:
+      platform: local
+      format: iceberg
+      location:
+        catalog: lakekeeper
+        uri: "https://lakekeeper.lab.test/catalog"
+        warehouse: sales-wh
+        database: e2e_raw
+        table: events
+    contract:
+      schema:
+        - {name: event_id, type: string, required: true}
+        - {name: run_id, type: string}
+        - {name: user_id, type: string}
+        - {name: event_time, type: timestamp_ltz(3)}
+  - exposeId: events_daily
+    kind: table
+    binding:
+      platform: local
+      format: iceberg
+      location:
+        catalog: lakekeeper
+        uri: "https://lakekeeper.lab.test/catalog"
+        warehouse: sales-wh
+        database: e2e_curated
+        table: events_daily
+    contract:
+      schema:
+        - {name: run_id, type: string}
+        - {name: event_date, type: date, required: true}
+        - {name: events, type: bigint}

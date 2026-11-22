@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# PLANTED: a Helmfile that needs the network (a chart repository instead of
+# the committed cache). Rendered with every proxy pointed at a closed port and
+# --skip-deps, it must FAIL: the render gate proves nothing is fetched.
+environments:
+  core: {}
+  streaming: {}
+  orchestration: {}
+  full: {}
+---
+repositories:
+  - name: remote
+    url: https://charts.example.test/stable
+releases:
+  - name: trino
+    namespace: trino
+    chart: remote/trino
+    version: 1.44.0

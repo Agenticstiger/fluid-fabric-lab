@@ -1,0 +1,15 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# PLANTED: an OSL runtime record whose obligations are a
+# placeholder and whose digest is all zeros. The licence gate must FAIL.
+lock_version: 1
+charts: []
+images:
+  - id: example-operator
+    component: example
+    use: optional
+    ref: "oci.example.test/sdp/example-operator:26.7.0"
+    digest: "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+    license: {spdx: OSL-3.0, source: "https://example.test/operator"}
+    obligations: "-"

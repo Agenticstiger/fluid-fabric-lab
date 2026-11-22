@@ -1,0 +1,39 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# Root REUSE annotations (REUSE Specification 3.3). Files that can carry a
+# comment get an SPDX header instead; this file covers only files that cannot.
+# Vendored third-party files are annotated by the REUSE.toml next to them
+# (platform/charts/REUSE.toml, platform/schemas/REUSE.toml). Check with
+# `reuse lint`.
+version = 1
+
+# NOTICE is plain text read by people and tools verbatim; no comment syntax.
+# It reproduces third-party notices (Apache Airflow, AQUIFER) as their
+# licences require; those notices are listed in the file itself.
+[[annotations]]
+path = "NOTICE"
+SPDX-FileCopyrightText = "2026 Agentics Transformation Limited"
+SPDX-License-Identifier = "Apache-2.0"
+
+# Python bytecode a local test run may write (.gitignore drops it from git;
+# reuse 6.2 does not apply .gitignore before the first commit). Compiled from
+# the Apache-2.0 sources beside it.
+[[annotations]]
+path = ["**/__pycache__/**", "**/*.pyc"]
+SPDX-FileCopyrightText = "2026 Agentics Transformation Limited"
+SPDX-License-Identifier = "Apache-2.0"
+
+# Generated files that their tools rewrite whole (uv pip compile, and
+# tofu providers lock), so a header in them would be lost on the next
+# regeneration. platform/images/fluid-runner/README.md says how to regenerate.
+[[annotations]]
+path = ["platform/images/fluid-runner/requirements.txt", "platform/images/fluid-runner/requirements-build.txt", "platform/images/fluid-runner/tofu/.terraform.lock.hcl", "platform/images/airflow-fluid/requirements.txt", "platform/images/airflow-fluid/requirements-build.txt"]
+SPDX-FileCopyrightText = "2026 Agentics Transformation Limited"
+SPDX-License-Identifier = "Apache-2.0"
+
+# JSON cannot carry a comment: the seed grants OPA reads (docs/trino-auth.md).
+[[annotations]]
+path = "platform/policy/trino-lab/data.json"
+SPDX-FileCopyrightText = "2026 Agentics Transformation Limited"
+SPDX-License-Identifier = "Apache-2.0"

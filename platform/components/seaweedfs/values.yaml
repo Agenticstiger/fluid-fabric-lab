@@ -1,0 +1,82 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# SeaweedFS 4.48 (chart 4.48.0): master, volume, filer and S3 gateway, one
+# replica each, sized for the core tier. The image is injected by digest from
+# versions.lock.yaml by the Helmfile.
+#
+# Why not the chart's all-in-one mode: chart 4.48.0 renders its SFTP Secret
+# (random passwords plus a freshly generated ed25519 key, as a pre-install
+# hook) whenever allInOne.enabled is true, even with SFTP off
+# (templates/sftp/sftp-secret.yaml line 1). That makes every render differ and
+# puts generated credentials in the output. The split components render
+# deterministically and cost the same memory.
+#
+# REQUIRED: telemetry off. `weed master` defaults to sending
+# statistics to telemetry.seaweedfs.com. The chart has no value for it, so the
+# flag goes through master.extraArgs. (`weed server`/`weed mini` spell it
+# -master.telemetry=false; the standalone master's flag is -telemetry.) The
+# flag name is not checked against a running 4.48 master; the default-deny
+# egress policy blocks the endpoint regardless.
+#
+# S3 auth is on. Secret `seaweedfs-s3-config` (written by `lab up`,
+# labctl/credentials.py) holds the identities AND the advanced IAM config: the
+# STS signing key, the role Lakekeeper assumes to vend per-table credentials,
+# and that role's policy. The chart passes it as `-config`; `-iam.config`
+# (extraArgs below) reads the same file for STS, as Lakekeeper's own SeaweedFS
+# CI does with `weed mini -s3.config -s3.iam.config`.
+#
+# Storage is PersistentVolumeClaims on kind's default local-path class; the
+# chart's hostPath defaults would break Pod Security `restricted` (`lab check` (i)).
+global:
+  seaweedfs:
+    enableSecurity: false   # TLS terminates at the lab Gateway; the lab runs no in-cluster mTLS
+    monitoring:
+      enabled: false
+master:
+  enabled: true
+  replicas: 1
+  extraArgs:
+    - "-telemetry=false"
+  affinity: ""
+  data: {type: persistentVolumeClaim, size: 1Gi, storageClass: ""}
+  logs: {type: emptyDir}
+  resources:
+    requests: {cpu: 50m, memory: 64Mi}
+    limits: {cpu: 500m, memory: 128Mi}
+volume:
+  enabled: true
+  replicas: 1
+  affinity: ""
+  dataDirs:
+    - name: data1
+      type: persistentVolumeClaim
+      size: 10Gi
+      storageClass: ""
+      maxVolumes: 0
+  logs: {type: emptyDir}
+  resources:
+    requests: {cpu: 50m, memory: 128Mi}
+    limits: {cpu: 500m, memory: 256Mi}
+filer:
+  enabled: true
+  replicas: 1
+  affinity: ""
+  data: {type: persistentVolumeClaim, size: 1Gi, storageClass: ""}
+  logs: {type: emptyDir}
+  resources:
+    requests: {cpu: 50m, memory: 128Mi}
+    limits: {cpu: 500m, memory: 256Mi}
+s3:
+  enabled: true
+  replicas: 1
+  enableAuth: true
+  existingConfigSecret: seaweedfs-s3-config
+  extraArgs:
+    - "-iam.config=/etc/sw/seaweedfs_s3_config"
+  logs: {type: emptyDir}
+  resources:
+    requests: {cpu: 50m, memory: 64Mi}
+    limits: {cpu: 500m, memory: 128Mi}
+allInOne:
+  enabled: false

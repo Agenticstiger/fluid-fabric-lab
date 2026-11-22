@@ -1,0 +1,47 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# kind v0.33.0 cluster for `lab up --cluster kind`. Single node: the lab's tiers are sized for one VM.
+#
+# - Node image by digest. It MUST equal versions.lock.yaml images[kind-node]
+#   (ref + digest); `lab doctor` and the L0 lock-consistency check compare
+#   the two, so a bump changes both in one commit.
+# - Every host port is bound to 127.0.0.1, including the API server: nothing
+#   in the lab listens on a LAN interface.
+# - NetworkPolicy works out of the box (kube-network-policies since kind
+#   v0.24.0); default-deny egress per namespace lands with `lab check` (h).
+# - Images come from a local registry mirror (`lab mirror`), not `kind load`,
+#   which duplicates layers. The containerd patch below points the CRI at
+#   /etc/containerd/certs.d; `lab up` writes one hosts.toml per upstream
+#   registry into the node, pointing at the mirror container on the kind
+#   network with no upstream fallback, plus a `_default` that points at a
+#   closed port (labctl/cluster.py). This is kind's documented local-registry
+#   pattern (https://kind.sigs.k8s.io/docs/user/local-registry/); it works with
+#   the node's containerd v2.3.4 (docs/proven.md).
+# - `lab up` does not use this file as is: it writes a copy into the lab's
+#   state directory with the lab name, the node image from the mirror (same
+#   digest) and the chosen host port (--https-port).
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: fluid-fabric-lab
+networking:
+  apiServerAddress: "127.0.0.1"
+  ipFamily: ipv4
+nodes:
+  - role: control-plane
+    image: docker.io/kindest/node:v1.36.4@sha256:099e049362a1526b2db71494e1947aae99bd16290d7c895f2b7ea312e3cbfaed
+    labels:
+      ingress-ready: "true"
+    extraPortMappings:
+      # The lab Gateway (Envoy, NodePort 30443; platform/components/lab-gateway)
+      # serves every *.lab.test endpoint over HTTPS. Host port 443 needs a
+      # rootful runtime (Docker Engine, Docker Desktop, Colima, Rancher
+      # Desktop); rootless Podman cannot bind it and `lab doctor` must say so.
+      - containerPort: 30443
+        hostPort: 443
+        listenAddress: "127.0.0.1"
+        protocol: TCP
+containerdConfigPatches:
+  - |-
+    [plugins."io.containerd.grpc.v1.cri".registry]
+      config_path = "/etc/containerd/certs.d"

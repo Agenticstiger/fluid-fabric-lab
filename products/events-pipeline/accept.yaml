@@ -1,0 +1,17 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# What `lab accept` does for this product between stage 7 (apply) and stage 8 (policy-apply).
+# Format and rules: docs/lab-accept.md. The file is checked strictly in code (labctl/accept.py).
+#
+# Stage 7 runs in mode `amend`, which creates the stream and the tables' definitions but runs no
+# batch. Stage 8 grants on tables, so they must exist first: each build is applied by hand, as the
+# generated Airflow DAG's single task does, and the run waits until Lakekeeper lists its table.
+# `stream-raw` has no step: stage 7 keeps the stream running, and it needs the Kafka fixture of the
+# streaming tier (a `kafka_produce` step is not available yet).
+schemaVersion: 1
+steps:
+  - apply_build: daily-curated
+  - wait_table: {warehouse: sales-wh, namespace: events_curated, table: events_daily, timeout_s: 900}
+  - apply_build: hourly-marts
+  - wait_table: {warehouse: sales-wh, namespace: events_marts, table: events_hourly, timeout_s: 900}

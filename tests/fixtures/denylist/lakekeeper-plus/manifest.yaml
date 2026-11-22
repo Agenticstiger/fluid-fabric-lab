@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# PLANTED (lakekeeper-plus licensed edition). L0 selftest: the denylist gate must FAIL.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: catalog
+  namespace: fixture
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: catalog}
+  template:
+    metadata:
+      labels: {app: catalog}
+    spec:
+      containers:
+        - name: main
+          image: "quay.io/vakamo/lakekeeper-plus:v0.14.0@sha256:18ac3e7343f016890c510e93f935261169d9e3f565436429830faf0934f4f8e4"

@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# The lab CA. `lab up` creates the CA on the host
+# before the cluster exists, because OpenBao beside the cluster needs a
+# certificate first (labctl/pki.py), and imports the key pair as Secret
+# cert-manager/lab-ca. This release only uses it:
+#   - ClusterIssuer `lab-ca` signs every endpoint certificate in the cluster;
+#   - a trust-manager Bundle copies the CA certificate (never the key) into
+#     ConfigMap `lab-ca-bundle` in every namespace: `ca.crt` (PEM) for Go,
+#     Rust and Python clients, `truststore.p12` (PKCS#12) for JVMs.
+# Strimzi keeps its own CA (its cert-manager integration is Early Access).
+objects:
+  30-ca-issuer:
+    apiVersion: cert-manager.io/v1
+    kind: ClusterIssuer
+    metadata: {name: lab-ca}
+    spec:
+      ca: {secretName: lab-ca}     # read from cert-manager's cluster resource namespace
+  40-ca-bundle:
+    apiVersion: trust.cert-manager.io/v1alpha1
+    kind: Bundle
+    metadata: {name: lab-ca-bundle}
+    spec:
+      sources:
+        - secret: {name: lab-ca, key: ca.crt}
+      target:
+        configMap: {key: ca.crt}
+        additionalFormats:
+          pkcs12: {key: truststore.p12}

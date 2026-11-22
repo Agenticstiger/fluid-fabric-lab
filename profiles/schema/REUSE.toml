@@ -1,0 +1,10 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# JSON cannot carry comment headers, so the schemas are annotated here.
+version = 1
+
+[[annotations]]
+path = ["site.schema.json", "expectations.schema.json"]
+SPDX-FileCopyrightText = "2026 Agentics Transformation Limited"
+SPDX-License-Identifier = "Apache-2.0"

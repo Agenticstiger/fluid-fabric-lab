@@ -1,0 +1,137 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# The lab's single HTTPS entry point (*.lab.test). kind maps host
+# 127.0.0.1:443 to node port 30443 (platform/kind/cluster.yaml); the Envoy
+# Service below is a NodePort pinned to 30443 and named `lab-gateway`, so one
+# Keycloak issuer URL works from browsers and pods: pods
+# resolve every *.lab.test name to this Service through the CoreDNS rewrite
+# `lab up` installs (labctl/cluster.py).
+#
+# Each HTTPRoute lives in its backend's namespace, so no ReferenceGrant is
+# needed. Keycloak and Trino serve TLS themselves (Trino's JWT authentication
+# needs it); their hops are verified with a BackendTLSPolicy against the lab
+# CA. The other backends speak plain HTTP inside the cluster; the endpoint
+# clients use is HTTPS at the Gateway.
+objects:
+  10-envoyproxy:
+    apiVersion: gateway.envoyproxy.io/v1alpha1
+    kind: EnvoyProxy
+    metadata: {name: lab}
+    spec:
+      telemetry:
+        metrics:
+          prometheus: {disable: true}
+      provider:
+        type: Kubernetes
+        kubernetes:
+          envoyDeployment:
+            replicas: 1
+            container:
+              image: '{{ .Values.images.envoyProxy }}'
+              resources:
+                requests: {cpu: 50m, memory: 64Mi}
+                limits: {cpu: 500m, memory: 128Mi}
+          envoyService:
+            name: lab-gateway
+            type: NodePort
+            externalTrafficPolicy: Cluster
+            # pins the generated Service's node port; `lab up`'s host-port step proves it answers
+            patch:
+              type: StrategicMerge
+              value:
+                spec:
+                  ports:
+                    - port: 443
+                      nodePort: 30443
+  20-gatewayclass:
+    apiVersion: gateway.networking.k8s.io/v1
+    kind: GatewayClass
+    metadata: {name: lab}
+    spec:
+      controllerName: gateway.envoyproxy.io/gatewayclass-controller
+      parametersRef:
+        group: gateway.envoyproxy.io
+        kind: EnvoyProxy
+        name: lab
+        namespace: envoy-gateway-system
+  30-gateway-cert:
+    apiVersion: cert-manager.io/v1
+    kind: Certificate
+    metadata: {name: lab-gateway-tls}
+    spec:
+      secretName: lab-gateway-tls
+      dnsNames: ["*.lab.test", "lab.test"]
+      privateKey: {algorithm: ECDSA, size: 256}
+      issuerRef: {name: lab-ca, kind: ClusterIssuer, group: cert-manager.io}
+  40-gateway:
+    apiVersion: gateway.networking.k8s.io/v1
+    kind: Gateway
+    metadata: {name: lab}
+    spec:
+      gatewayClassName: lab
+      listeners:
+        - name: https
+          protocol: HTTPS
+          port: 443
+          hostname: "*.lab.test"
+          tls:
+            mode: Terminate
+            certificateRefs:
+              - {kind: Secret, name: lab-gateway-tls}
+          allowedRoutes:
+            namespaces: {from: All}
+  50-route-keycloak:
+    apiVersion: gateway.networking.k8s.io/v1
+    kind: HTTPRoute
+    metadata: {name: keycloak, namespace: keycloak}
+    spec:
+      parentRefs: [{name: lab, namespace: envoy-gateway-system, sectionName: https}]
+      hostnames: [keycloak.lab.test]
+      rules:
+        - backendRefs: [{name: keycloak-service, port: 8443}]
+  51-backendtls-keycloak:
+    apiVersion: gateway.networking.k8s.io/v1
+    kind: BackendTLSPolicy
+    metadata: {name: keycloak, namespace: keycloak}
+    spec:
+      targetRefs: [{group: "", kind: Service, name: keycloak-service}]
+      validation:
+        caCertificateRefs: [{group: "", kind: ConfigMap, name: lab-ca-bundle}]
+        hostname: keycloak-service.keycloak.svc
+  52-route-lakekeeper:
+    apiVersion: gateway.networking.k8s.io/v1
+    kind: HTTPRoute
+    metadata: {name: lakekeeper, namespace: lakekeeper}
+    spec:
+      parentRefs: [{name: lab, namespace: envoy-gateway-system, sectionName: https}]
+      hostnames: [lakekeeper.lab.test]
+      rules:
+        - backendRefs: [{name: lakekeeper, port: 8181}]
+  53-route-s3:
+    apiVersion: gateway.networking.k8s.io/v1
+    kind: HTTPRoute
+    metadata: {name: s3, namespace: seaweedfs}
+    spec:
+      parentRefs: [{name: lab, namespace: envoy-gateway-system, sectionName: https}]
+      hostnames: [s3.lab.test]
+      rules:
+        - backendRefs: [{name: seaweedfs-s3, port: 8333}]
+  54-route-trino:
+    apiVersion: gateway.networking.k8s.io/v1
+    kind: HTTPRoute
+    metadata: {name: trino, namespace: trino}
+    spec:
+      parentRefs: [{name: lab, namespace: envoy-gateway-system, sectionName: https}]
+      hostnames: [trino.lab.test]
+      rules:
+        - backendRefs: [{name: trino, port: 8443}]
+  55-backendtls-trino:
+    apiVersion: gateway.networking.k8s.io/v1
+    kind: BackendTLSPolicy
+    metadata: {name: trino, namespace: trino}
+    spec:
+      targetRefs: [{group: "", kind: Service, name: trino}]
+      validation:
+        caCertificateRefs: [{group: "", kind: ConfigMap, name: lab-ca-bundle}]
+        hostname: trino.trino.svc

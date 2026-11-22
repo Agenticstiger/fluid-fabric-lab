@@ -1,0 +1,44 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# The orchestration tier's own objects, beside the Airflow chart (docs/orchestration-tier.md):
+#
+#   lab-airflow-files   ConfigMap in namespace airflow: the dbt profile the scheduler's
+#                       DBT_PROFILES_DIR names and the projects-sync sidecar's script. Both stay real
+#                       files in platform/airflow/ and are read here. They must not contain
+#                       template braces: lab-objects renders every object through `tpl`.
+#   spark-pods          Role and RoleBinding in namespace `spark`: the scheduler's ServiceAccount
+#                       (airflow-scheduler, named by the chart) may create, get, list, watch and
+#                       delete pods there and read their logs, which is what a `fluid apply --env
+#                       local` Spark build needs of the lab's spark-submit (the spark
+#                       tier's /spark/lab-spark-submit). Nothing else in that namespace, and nothing
+#                       cluster-wide. The Airflow chart's own pod-launcher Role is off
+#                       (allowPodLaunching: false in components/airflow/values.yaml).
+objects:
+  10-files:
+    apiVersion: v1
+    kind: ConfigMap
+    metadata: {name: lab-airflow-files}
+    data:
+{{- range $f := list "profiles.yml" "sync_projects.py" }}
+      {{ $f }}: |
+{{ readFile (printf "../../airflow/%s" $f) | indent 8 }}
+{{- end }}
+  20-spark-pods-role:
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: Role
+    metadata: {name: airflow-spark-pods, namespace: spark}
+    rules:
+      - apiGroups: [""]
+        resources: [pods]
+        verbs: [create, get, list, watch, delete]
+      - apiGroups: [""]
+        resources: [pods/log]
+        verbs: [get]
+  21-spark-pods-binding:
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: RoleBinding
+    metadata: {name: airflow-spark-pods, namespace: spark}
+    roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: airflow-spark-pods}
+    subjects:
+      - {kind: ServiceAccount, name: airflow-scheduler, namespace: airflow}

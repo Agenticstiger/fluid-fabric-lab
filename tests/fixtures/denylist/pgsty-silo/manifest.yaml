@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# PLANTED (pgsty/silo, AGPL-3.0). L0 selftest: the denylist gate must FAIL.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: silo
+  namespace: fixture
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: silo}
+  template:
+    metadata:
+      labels: {app: silo}
+    spec:
+      containers:
+        - name: main
+          image: "docker.io/pgsty/silo:1.0.0@sha256:2e7d2c03a9507ae265ecf5b5356885a53393a2029d241394997265a1a25aefc6"

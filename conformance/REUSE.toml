@@ -1,0 +1,11 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# The reports `lab accept` writes (JSON cannot carry a comment header, and the .md beside it is
+# generated from the same record). Each is the output of the lab's own code.
+version = 1
+
+[[annotations]]
+path = "reports/**"
+SPDX-FileCopyrightText = "2026 Agentics Transformation Limited"
+SPDX-License-Identifier = "Apache-2.0"

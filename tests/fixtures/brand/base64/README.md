@@ -1,0 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+SPDX-License-Identifier: Apache-2.0
+-->
+
+# Planted: a name hidden in base64
+
+Token: cmVkcGFuZGE=

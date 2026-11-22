@@ -1,0 +1,49 @@
+-----BEGIN PGP SIGNED MESSAGE-----
+Hash: SHA512
+
+apiVersion: v2
+appVersion: 1.30.1
+dependencies:
+- - alias: monitoring
+  condition: monitoring.grafanaDashboard.create
+  name: cluster
+  repository: https://cloudnative-pg.github.io/grafana-dashboards
+  version: "0.0"
+description: CloudNativePG Operator Helm Chart
+home: https://cloudnative-pg.io
+icon: https://raw.githubusercontent.com/cloudnative-pg/artwork/main/cloudnativepg-logo.svg
+keywords:
+- - operator
+- - controller
+- - postgresql
+- - postgres
+- - database
+kubeVersion: '>=1.29.0-0'
+maintainers:
+- - email: p.scorsolini@gmail.com
+  name: phisco
+name: cloudnative-pg
+sources:
+- - https://github.com/cloudnative-pg/charts
+type: application
+version: 0.29.1
+
+...
+files:
+  cloudnative-pg-0.29.1.tgz: sha256:b53d3991fe84bcf38767e7702cae78666265427a127a26fff168ab4207d2b1df
+-----BEGIN PGP SIGNATURE-----
+
+wsFcBAEBCgAQBQJqtATGCRDjxo+TtQxewAAAOP4QAHS6hZYxZnHr2pkuu2orG3s9
+qTdXD6L3Je5zT72xK+LnpPrufoyzeyK42JJlePf3evC6j6Aijd4Y7Nkj0jDQPQAe
+ovgDW2USOqCvVzI0AsnvGfJMfZcomxsE+Q+eBGSI87tpFc1Xbnje30KoMRBRdEkk
+r90AXUH9vEwm/W1W5l1pBJzsc98dmdxjlfef3stM6xVmjXL/E1+fESBshICtR/51
+OWousgaNNow41vfTodqEbRBZyzW1JCCD0Dd/50VVB7GvO4EgvPl2yjsyF+n8qD/o
+vbrjF+NL3SBTvi+OhjZAKDy48ljFXGhUlJrsDvxDmWe/cmPB9PxGmHTCTB+iqOsf
+HXuCSHLw6jdWEyqgW1ICWM7HLnYP8smAZkbp3qEpC4Y0V8y3uyWBOjeUNT2ghkhd
+Pc3SlDnsnmLWg6lEkKmGYepa3JFeCX/JWpIj7xGmMq4P8IQeVDuAOqOL0htuBeBS
+AyS9Lg7EYxdmO9rRbpX7KriSUwZ+IDFUJvKD7sS+QO8G3wTQz1uuRSWc/pVO8yx4
+DyckQJ4g2k8rRTO3W35Nx34zj+4+2mNZPvBRXIB8zOrdcI9SKWe4+OcorOKou1ch
+bgUeIYxYO4c4UiSRK0nCpex3UtRk+VZuPB977FPe9r22XDCZfLvG3PzHOOO2sBKK
+oyyteVrw50PgLF/R0Kdy
+=SErF
+-----END PGP SIGNATURE-----

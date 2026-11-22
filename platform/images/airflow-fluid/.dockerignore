@@ -1,0 +1,10 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# Send the daemon only the build inputs, so a local tofu/.terraform or any
+# stray file never reaches the build.
+*
+!Dockerfile
+!requirements.txt
+!requirements-build.txt
+!record_forge.py

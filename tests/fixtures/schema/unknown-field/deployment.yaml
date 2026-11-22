@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+# PLANTED: `replica` is not a field (strict mode). schema must FAIL.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: typo
+  namespace: fixture
+spec:
+  replica: 1
+  selector:
+    matchLabels: {app: typo}
+  template:
+    metadata:
+      labels: {app: typo}
+    spec:
+      containers:
+        - name: main
+          image: "quay.io/example/tool:1.2.3@sha256:0000000000000000000000000000000000000000000000000000000000000001"

@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# PLANTED (minio/minio image). L0 selftest: the denylist gate must FAIL.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: objects
+  namespace: fixture
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: objects}
+  template:
+    metadata:
+      labels: {app: objects}
+    spec:
+      containers:
+        - name: main
+          image: "docker.io/minio/minio:RELEASE.2025-01-01T00-00-00Z@sha256:cd0aa9856147b6c5b4ff2b7dfee5da20aa38253099ef1b4a64aced233c9afe29"

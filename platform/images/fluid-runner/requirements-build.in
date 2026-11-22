@@ -1,0 +1,10 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# What builds forge's wheel from source in the Dockerfile's forge-wheel stage
+# (forge's build-system.requires: setuptools, setuptools-scm, wheel). Compiled
+# with every distribution pinned by version and sha256 by ./compile.sh; none
+# of it reaches the final image.
+setuptools>=68
+setuptools-scm>=8
+wheel

@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# Superset 6.1.0 (chart 0.22.8, marked deprecated upstream). OPTIONAL, off by
+# default, and NOT ENABLEABLE: the Helmfile refuses
+# addons.superset=true, because both bundled subcharts are Bitnami (denied)
+# and a usable Superset needs CNPG plus a non-Bitnami Redis-compatible cache
+# (tiers.yaml optional_addons). These values record the required overrides for
+# when that lands. The image is injected by digest from versions.lock.yaml as
+# docker.io/apache/superset, not the chart's default download-analytics
+# pull-through proxy host, which the denylist rejects.
+postgresql:
+  enabled: false
+redis:
+  enabled: false
+supersetWorker:
+  replicaCount: 0
+supersetCeleryBeat:
+  enabled: false
+supersetCeleryFlower:
+  enabled: false
+supersetWebsockets:
+  enabled: false
+resources:
+  requests: {cpu: 100m, memory: 512Mi}
+  limits: {cpu: "1", memory: 1Gi}

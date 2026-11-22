@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# CloudNativePG operator 1.30.1 (chart cloudnative-pg 0.29.1). The single lab
+# PostgreSQL cluster is the lab-postgres release. Every chart's own Postgres
+# subchart is disabled in favour of it. The operator's
+# default PostgreSQL image (POSTGRES_IMAGE_NAME) is injected from the lock by
+# the Helmfile, so a Cluster without imageName still pulls by digest.
+replicaCount: 1
+crds:
+  create: true
+config:
+  create: true
+  clusterWide: true
+  maxConcurrentReconciles: 2
+monitoring:
+  podMonitorEnabled: false
+  grafanaDashboard:
+    create: false   # vendored `cluster` dashboard subchart stays off (lock: enabled_by_lab false)
+resources:
+  requests: {cpu: 50m, memory: 96Mi}
+  limits: {cpu: 500m, memory: 192Mi}

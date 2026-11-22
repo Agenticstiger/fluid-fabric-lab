@@ -1,0 +1,12 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# PLANTED: a kustomize patch of rendered OSL templates (a derivative work). reuse_lint must FAIL.
+resources:
+  - rendered.yaml
+patches:
+  - target: {kind: StatefulSet}
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 1

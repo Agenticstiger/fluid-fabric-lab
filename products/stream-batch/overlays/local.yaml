@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# The lab (`fluid ... --env local`): the base contract's values, restated, so
+# `--env local` names a real overlay. `fluid apply --env local` runs in the
+# lab's fluid-host pod, and its Spark builds go to the lab's open Spark runtime
+# through the operator's FLUID_SPARK_SUBMIT_EXECUTABLE (lab-spark-submit).
+builds:
+  - id: events-stream
+    properties:
+      parameters:
+        spark:
+          runtime: local
+          source:
+            bootstrapServers: lab-kafka-kafka-bootstrap.kafka.svc:9092
+            auth: none
+  - id: daily-counts
+    properties:
+      parameters:
+        spark:
+          runtime: local

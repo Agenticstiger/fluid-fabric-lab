@@ -1,0 +1,14 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: demo
+  labels: {helm.sh/chart: demo-0.1.0}
+spec:
+  selector: {matchLabels: {app: demo}}
+  template:
+    metadata: {labels: {app: demo}}
+    spec:
+      containers:
+        - {name: demo, image: "quay.io/example/demo:1.0.0@sha256:b553f687e4dd1d212b25b1b0108711969d5f4e18cd27d0678bdcb0da0f49c362"}

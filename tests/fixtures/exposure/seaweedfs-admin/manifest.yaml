@@ -1,0 +1,32 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# PLANTED (the SeaweedFS admin server). L0 selftest: the exposure gate must FAIL.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: seaweedfs-admin
+  namespace: seaweedfs
+  labels: {app.kubernetes.io/component: admin}
+spec:
+  selector:
+    matchLabels: {app: seaweedfs-admin}
+  template:
+    metadata:
+      labels: {app: seaweedfs-admin, app.kubernetes.io/component: admin}
+    spec:
+      containers:
+        - name: admin
+          image: quay.io/example/seaweedfs:1.0.0
+          command: ["/bin/sh", "-ec", "exec /usr/bin/weed admin -port=23646"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: seaweedfs-admin
+  namespace: seaweedfs
+  labels: {app.kubernetes.io/component: admin}
+spec:
+  type: ClusterIP
+  selector: {app: seaweedfs-admin}
+  ports: [{port: 23646}]

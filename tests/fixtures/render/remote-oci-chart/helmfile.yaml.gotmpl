@@ -1,0 +1,17 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# PLANTED: a Helmfile that needs the network (an OCI registry chart instead of
+# the committed cache). Rendered with every proxy pointed at a closed port and
+# --skip-deps, it must FAIL: the render gate proves nothing is fetched.
+environments:
+  core: {}
+  streaming: {}
+  orchestration: {}
+  full: {}
+---
+releases:
+  - name: trino
+    namespace: trino
+    chart: oci://registry.example.test/charts/trino
+    version: 1.44.0

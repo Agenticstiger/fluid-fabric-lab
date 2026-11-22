@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# Dependabot watches the GitHub Actions in .github/workflows only. It updates
+# the pinned commit SHA and the `# vX.Y.Z` comment next to it together.
+#
+# Charts, images, CLI tools and Python packages are NOT watched here. They are
+# bumped on purpose, through versions.lock.yaml, after a soak period and a
+# green run; docs/ci.md says how.
+
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Etc/UTC
+    # Soak: a release is not proposed until it is 14 days old, the same rule
+    # versions.lock.yaml applies to tools.
+    cooldown:
+      default-days: 14
+    groups:
+      github-actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: "chore(ci)"
+    open-pull-requests-limit: 5

@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+# PLANTED: -Xms16g arrives through envFrom of a Secret. footprint must FAIL.
+apiVersion: v1
+kind: Secret
+metadata: {name: jvm-env, namespace: fixture}
+stringData: {JDK_JAVA_OPTIONS: "-Xms16g"}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: envfrom, namespace: fixture}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: envfrom}}
+  template:
+    metadata: {labels: {app: envfrom}}
+    spec:
+      containers:
+        - name: main
+          image: "quay.io/example/tool:1.2.3@sha256:0000000000000000000000000000000000000000000000000000000000000001"
+          envFrom:
+            - secretRef: {name: jvm-env}
+          resources:
+            limits: {memory: 1Gi}

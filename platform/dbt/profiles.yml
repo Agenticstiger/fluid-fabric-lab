@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# dbt-trino profile for the lab's pipeline identity (docs/trino-auth.md).
+# `lab-dbt` puts a Keycloak token for client fluid-pipeline in DBT_ENV_SECRET_FLUID_TRINO_JWT;
+# dbt-trino's `jwt` method sends it (https://docs.getdbt.com/docs/core/connect-data-platform/trino-setup).
+# The target schema is the one grant `fluid-pipeline` has write on.
+events_pipeline:
+  target: local
+  outputs:
+    local:
+      type: trino
+      method: jwt
+      jwt_token: "{{ env_var('DBT_ENV_SECRET_FLUID_TRINO_JWT') }}"
+      host: trino.trino.svc
+      port: 8443
+      http_scheme: https
+      cert: /etc/lab-ca/ca.crt
+      database: lakehouse
+      schema: events_marts
+      threads: 1

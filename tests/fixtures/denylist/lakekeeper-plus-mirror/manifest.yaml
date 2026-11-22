@@ -1,0 +1,18 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# PLANTED: the licensed Lakekeeper edition behind mirrors, a port and Docker Hub. Must FAIL.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: lkp, namespace: fixture}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: lkp}}
+  template:
+    metadata: {labels: {app: lkp}}
+    spec:
+      containers:
+        - {name: a, image: "localhost:5001/vakamo/lakekeeper-plus:v0.14.0@sha256:2e7d2c03a9507ae265ecf5b5356885a53393a2029d241394997265a1a25aefc6"}
+        - {name: b, image: "harbor.lab.test/quay/vakamo/lakekeeper-plus:v0.14.0@sha256:2e7d2c03a9507ae265ecf5b5356885a53393a2029d241394997265a1a25aefc6"}
+        - {name: c, image: "quay.io:443/vakamo/lakekeeper-plus:v0.14.0@sha256:2e7d2c03a9507ae265ecf5b5356885a53393a2029d241394997265a1a25aefc6"}
+        - {name: d, image: "docker.io/vakamo/lakekeeper-plus:v0.14.0@sha256:2e7d2c03a9507ae265ecf5b5356885a53393a2029d241394997265a1a25aefc6"}

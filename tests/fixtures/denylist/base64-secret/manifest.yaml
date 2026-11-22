@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# PLANTED: a denied image reference base64-encoded in a Secret. Must FAIL.
+apiVersion: v1
+kind: Secret  # gitleaks:allow (planted denylist fixture: the value is an image reference, not a secret)
+metadata: {name: enc, namespace: fixture}
+data:
+  image: ZG9ja2VyLmlvL2JpdG5hbWlsZWdhY3kva3ViZWN0bDoxLjMzLjA=
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: clean, namespace: fixture}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: clean}}
+  template:
+    metadata: {labels: {app: clean}}
+    spec:
+      containers:
+        - {name: main, image: "quay.io/example/tool:1.2.3@sha256:2e7d2c03a9507ae265ecf5b5356885a53393a2029d241394997265a1a25aefc6"}

@@ -1,0 +1,10 @@
+<!--
+SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+SPDX-License-Identifier: Apache-2.0
+-->
+<ivysettings>
+  <settings defaultResolver="lab-offline"/>
+  <resolvers>
+    <ibiblio name="lab-offline" m2compatible="true" usepoms="true" root="file:///opt/lab/maven"/>
+  </resolvers>
+</ivysettings>

@@ -1,0 +1,17 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+# PLANTED: a container with a request and no memory limit. footprint must FAIL.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: nolimit, namespace: fixture}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: nolimit}}
+  template:
+    metadata: {labels: {app: nolimit}}
+    spec:
+      containers:
+        - name: main
+          image: "quay.io/example/tool:1.2.3@sha256:0000000000000000000000000000000000000000000000000000000000000001"
+          resources:
+            requests: {memory: 256Mi}

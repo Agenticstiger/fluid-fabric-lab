@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# PLANTED: a denied image split into org and name keys. Must FAIL.
+apiVersion: v1
+kind: ConfigMap
+metadata: {name: split, namespace: fixture}
+data:
+  IMAGE_ORG: bitnamilegacy
+  IMAGE_NAME: kubectl
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: clean, namespace: fixture}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: clean}}
+  template:
+    metadata: {labels: {app: clean}}
+    spec:
+      containers:
+        - {name: main, image: "quay.io/example/tool:1.2.3@sha256:2e7d2c03a9507ae265ecf5b5356885a53393a2029d241394997265a1a25aefc6"}

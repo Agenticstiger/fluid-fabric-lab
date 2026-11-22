@@ -1,0 +1,15 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# PLANTED (the Envoy Service as a LoadBalancer). L0 selftest: the exposure
+# gate must FAIL.
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata: {name: lab, namespace: envoy-gateway-system}
+spec:
+  provider:
+    type: Kubernetes
+    kubernetes:
+      envoyService:
+        name: lab-gateway
+        type: LoadBalancer

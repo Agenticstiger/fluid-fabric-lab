@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+# PLANTED: a `passed` cell while stagesRun is false. profile_schema must FAIL.
+schemaVersion: 1
+profile: fx-passed
+tier: core
+stagesRun: false
+runners: [cli]
+products:
+  batch-demo:
+    summary: "Batch fixture product for the L0 selftest."
+    domains: [sales]
+    runners:
+      cli:
+        bundle: {status: passed, reasonCode: fixture_claim, reason: "Fixture cell for the L0 selftest."}
+        validate: {status: passed, reasonCode: fixture_claim, reason: "Fixture cell for the L0 selftest."}
+        generate-artifacts: {status: passed, reasonCode: fixture_claim, reason: "Fixture cell for the L0 selftest."}
+        validate-artifacts: {status: passed, reasonCode: fixture_claim, reason: "Fixture cell for the L0 selftest."}
+        diff: {status: passed, reasonCode: fixture_claim, reason: "Fixture cell for the L0 selftest."}
+        plan: {status: passed, reasonCode: fixture_claim, reason: "Fixture cell for the L0 selftest."}
+        apply: {status: passed, reasonCode: fixture_claim, reason: "Fixture cell for the L0 selftest."}
+        policy-apply: {status: passed, reasonCode: fixture_claim, reason: "Fixture cell for the L0 selftest."}
+        verify: {status: passed, reasonCode: fixture_claim, reason: "Fixture cell for the L0 selftest."}
+        publish: {status: passed, reasonCode: fixture_claim, reason: "Fixture cell for the L0 selftest."}
+        schedule-sync: {status: passed, reasonCode: fixture_claim, reason: "Fixture cell for the L0 selftest."}

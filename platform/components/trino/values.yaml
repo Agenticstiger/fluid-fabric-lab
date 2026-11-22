@@ -1,0 +1,154 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# Trino 483 (chart 1.44.0), single node + OPA sidecar. Trino and OPA images are injected by digest from versions.lock.yaml
+# by the Helmfile.
+#
+# REQUIRED overrides (the L0 footprint floor fails the chart defaults: two
+# workers and three 8G JVM heaps):
+#   server.workers 0 + node-scheduler.include-coordinator=true (Trino's own
+#   Docker default); heap by maxHeapPercent, never maxHeapSize; an explicit
+#   container limit.
+#
+# Authentication (docs/trino-auth.md): JWT over HTTPS, tokens from Keycloak.
+# Trino 483 JWT authentication
+# (https://trino.io/docs/483/security/jwt.html) needs TLS and an
+# internal-communication shared secret; both are below. HTTP access is then
+# refused by Trino itself (403) unless a request arrived through the Gateway,
+# which terminates TLS and sets X-Forwarded-Proto (http-server.process-forwarded);
+# the Gateway talks to the HTTPS port (platform/components/lab-gateway).
+# /v1/info stays public, so the chart's probes and `lab check` (i) still work.
+server:
+  workers: 0
+  config:
+    https:
+      enabled: true
+      port: 8443
+      keystore:
+        path: /etc/trino-tls/keystore.p12   # Certificate trino-tls (lab-extras.yaml.gotmpl)
+    authenticationType: JWT
+    query:
+      maxMemory: 512MB
+coordinator:
+  jvm:
+    maxHeapSize: null          # remove the chart's 8G; heap follows the container limit
+    maxHeapPercent: 70
+    initialHeapPercent: 25
+  config:
+    nodeScheduler:
+      includeCoordinator: true
+    query:
+      maxMemoryPerNode: 512MB  # + 30% heap headroom (~322MB) stays under the ~1075Mi heap (70% of 1536Mi)
+  # Setting image.digest makes the chart drop its JDK-8329528 workaround
+  # (configmap-coordinator.yaml only adds it for an unmodified image), so it is
+  # restored here for Trino 483.
+  additionalJVMConfig:
+    - -XX:+UnlockDiagnosticVMOptions
+    - -XX:G1NumCollectionsKeepPinned=10000000
+    # Trust only the lab CA (Keycloak tokens, Lakekeeper, S3 at *.lab.test):
+    # trust-manager's PKCS#12 copy of it from ConfigMap lab-ca-bundle.
+    - -Djavax.net.ssl.trustStore=/etc/lab-ca/truststore.p12
+    - -Djavax.net.ssl.trustStoreType=PKCS12
+  additionalVolumes:
+    - name: lab-ca
+      configMap: {name: lab-ca-bundle}
+    - name: trino-tls
+      secret: {secretName: trino-tls}
+  additionalVolumeMounts:
+    - {name: lab-ca, mountPath: /etc/lab-ca, readOnly: true}
+    - {name: trino-tls, mountPath: /etc/trino-tls, readOnly: true}
+  resources:
+    requests: {cpu: 500m, memory: 1Gi}
+    limits: {cpu: "2", memory: 1536Mi}
+# No worker pods exist with workers 0; these keep the worker config honest if
+# anyone raises the count (the floor would then count real limits, not 8G).
+worker:
+  jvm:
+    maxHeapSize: null
+    maxHeapPercent: 70
+  resources:
+    requests: {cpu: 500m, memory: 1Gi}
+    limits: {cpu: "2", memory: 1536Mi}
+
+# OPA sidecar bound to 127.0.0.1. OPA 1.21.1 replaces the
+# chart's 1.16.2 image (Helmfile injects it). --skip-version-check: OPA would
+# otherwise call GitHub's release API on start.
+opa:
+  enabled: true
+  listenAddress: 127.0.0.1
+  port: 8181
+  extraArgs:
+    - --skip-version-check
+  resources:
+    requests: {cpu: 100m, memory: 128Mi}
+    limits: {cpu: 500m, memory: 256Mi}
+  # The policy and its grants are ConfigMap trino-grants (lab.rego and data.json,
+  # from platform/policy/trino-lab by components/trino/lab-extras.yaml.gotmpl):
+  # authenticated principals listed in the grants may do what dbt-trino needs,
+  # and everything else is denied. The forge rows/masks package
+  # (platform/policy/forge-rows-masks) and the group lookup
+  # (platform/policy/group-lookup) extend it in (c), delivered as a signed
+  # bundle from SeaweedFS.
+  policyConfigMap: trino-grants
+
+# Explicit access control instead of the chart's auto-wiring, because the
+# auto-wiring has no batch column-masking URI (the lab needs the allow,
+# row-filter, column-mask, batched and batch column-masking URIs).
+accessControl:
+  type: properties
+  properties: |
+    access-control.name=opa
+    opa.policy.uri=http://127.0.0.1:8181/v1/data/trino/allow
+    opa.policy.batched-uri=http://127.0.0.1:8181/v1/data/trino/batch
+    opa.policy.row-filters-uri=http://127.0.0.1:8181/v1/data/trino/rowFilters
+    opa.policy.column-masking-uri=http://127.0.0.1:8181/v1/data/trino/columnMask
+    opa.policy.batch-column-masking-uri=http://127.0.0.1:8181/v1/data/trino/batchColumnMasks
+    opa.allow-permission-management-operations=false
+
+# Static catalogs. The Iceberg catalog reads Lakekeeper with
+# vended credentials and no static storage keys (`lab check` (a)). Its client
+# credentials come from Secret trino-lakekeeper-client (`lab up` creates it).
+catalogs:
+  tpch: |
+    connector.name=tpch
+    tpch.splits-per-node=1
+  lakehouse: |
+    connector.name=iceberg
+    iceberg.catalog.type=rest
+    iceberg.rest-catalog.uri=https://lakekeeper.lab.test/catalog
+    iceberg.rest-catalog.warehouse=sales-wh
+    iceberg.rest-catalog.security=OAUTH2
+    iceberg.rest-catalog.oauth2.server-uri=https://keycloak.lab.test/realms/fluid/protocol/openid-connect/token
+    iceberg.rest-catalog.oauth2.credential=${ENV:LAKEKEEPER_CLIENT_ID}:${ENV:LAKEKEEPER_CLIENT_SECRET}
+    iceberg.rest-catalog.oauth2.scope=lakekeeper
+    iceberg.rest-catalog.vended-credentials-enabled=true
+    fs.native-s3.enabled=true
+    s3.endpoint=https://s3.lab.test
+    s3.region=us-east-1
+    s3.path-style-access=true
+envFrom:
+  - secretRef: {name: trino-lakekeeper-client}
+  - secretRef: {name: trino-server-secrets}   # TRINO_SHARED_SECRET, TRINO_KEYSTORE_PASSWORD (`lab up`)
+
+# Trino sits behind the lab Gateway, which sets X-Forwarded-*. Without this,
+# Trino refuses every request through the Gateway with 406 ("does not allow
+# processing of the X-Forwarded-For header"; `lab check` (i), 2026-11-18).
+#
+# JWT authentication, keys per https://trino.io/docs/483/security/jwt.html:
+# - key-file: Keycloak's JWKS endpoint, fetched over TLS (the JVM trusts only the lab CA);
+# - required-issuer / required-audience: a token must come from realm `fluid`
+#   and carry `aud: trino` (client scope `trino`, platform/identity/realm-import.yaml);
+# - principal-field azp: for a client-credentials token the client id, which is
+#   the user OPA sees (`fluid-pipeline`); a user would not reach it by `sub`.
+# Tokens without a valid signature, issuer or audience are answered with 401.
+additionalConfigProperties:
+  - http-server.process-forwarded=true
+  - http-server.https.keystore.key=${ENV:TRINO_KEYSTORE_PASSWORD}
+  - internal-communication.shared-secret=${ENV:TRINO_SHARED_SECRET}
+  - http-server.authentication.jwt.key-file=https://keycloak.lab.test/realms/fluid/protocol/openid-connect/certs
+  - http-server.authentication.jwt.required-issuer=https://keycloak.lab.test/realms/fluid
+  - http-server.authentication.jwt.required-audience=trino
+  - http-server.authentication.jwt.principal-field=azp
+
+# Browser OAuth2 login (`lab check` b-oauth2) is not configured yet: it needs a
+# confidential realm client for the web UI and a browser to prove it.

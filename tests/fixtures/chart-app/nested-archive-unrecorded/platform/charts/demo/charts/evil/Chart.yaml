@@ -1,0 +1,4 @@
+apiVersion: v2
+name: evil
+version: 1.0.0
+description: "PLANTED: a vendored subchart archive the lock does not record"

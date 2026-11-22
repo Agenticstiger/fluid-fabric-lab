@@ -1,0 +1,8 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# Agentics-authored Helm values for the overlay (fixture).
+servers:
+  replicas: 1
+  resources:
+    limits: {memory: 2Gi}

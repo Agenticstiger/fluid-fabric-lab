@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# trust-manager v0.25.0. Distributes the lab CA (lab-pki release) to every
+# namespace as a ConfigMap, so every client gets a caBundle.
+crds:
+  enabled: true
+  keep: true
+replicaCount: 1
+# The public-CA package image (trust-pkg-debian-*) is not used: lab clients
+# trust only the lab CA. Lock entry trust-pkg-debian-trixie is default-unused.
+defaultPackage:
+  enabled: false
+app:
+  trust:
+    namespace: cert-manager   # Bundle sources (the lab CA secret) are read from here
+resources:
+  requests: {cpu: 10m, memory: 64Mi}
+  limits: {cpu: 250m, memory: 128Mi}

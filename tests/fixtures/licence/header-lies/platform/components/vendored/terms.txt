@@ -1,0 +1,15 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# PLANTED: the header says Apache-2.0, the body is AGPL text.
+
+SYNTHETIC L0 FIXTURE TEXT. Written by Agentics for tests/fixtures; not the real licence text,
+only its distinguishing phrases. Do not reuse.
+
+GNU AFFERO GENERAL PUBLIC LICENSE
+Version 3, 19 November 2007
+
+13. Remote Network Interaction; Use with the GNU General Public License.
+If you modify the Program, your modified version must prominently offer all
+users interacting with it remotely through a computer network an opportunity
+to receive the Corresponding Source of your version.

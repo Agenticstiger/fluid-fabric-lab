@@ -1,0 +1,45 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# Two objects the Trino chart deploys beside Trino (its `extraManifests`; a
+# list, so both live here), a second values file of the `trino` release:
+#
+# - Certificate trino-tls: the coordinator's HTTPS certificate, signed by the
+#   lab CA (ClusterIssuer lab-ca) and sealed in a PKCS#12 keystore with the
+#   password from Secret trino-server-secrets (written by `lab up`). JWT
+#   authentication needs TLS (https://trino.io/docs/483/security/jwt.html);
+#   the Gateway reaches this port with a BackendTLSPolicy, like Keycloak.
+# - ConfigMap trino-grants: the OPA sidecar's policy directory
+#   (opa.policyConfigMap). `lab.rego` is the policy, `data.json` the grants it
+#   reads (docs/trino-auth.md). The files live in platform/policy/trino-lab/
+#   and are read here, so each stays a real file. They must not contain
+#   template braces: the chart renders every extra manifest through `tpl`.
+#   The chart's OPA sidecar runs with --watch, so a changed ConfigMap is
+#   reloaded without a restart (kubelet needs up to about a minute).
+opa:
+  policyConfigMap: trino-grants
+extraManifests:
+  - apiVersion: cert-manager.io/v1
+    kind: Certificate
+    metadata: {name: trino-tls}
+    spec:
+      secretName: trino-tls
+      dnsNames:
+        - trino.trino.svc
+        - trino.trino.svc.cluster.local
+        - trino.lab.test
+      privateKey: {algorithm: ECDSA, size: 256}
+      keystores:
+        pkcs12:
+          create: true
+          profile: Modern2023
+          passwordSecretRef: {name: trino-server-secrets, key: TRINO_KEYSTORE_PASSWORD}
+      issuerRef: {name: lab-ca, kind: ClusterIssuer, group: cert-manager.io}
+  - apiVersion: v1
+    kind: ConfigMap
+    metadata: {name: trino-grants}
+    data:
+{{- range $f := list "lab.rego" "data.json" }}
+      {{ $f }}: |
+{{ readFile (printf "../../policy/trino-lab/%s" $f) | indent 8 }}
+{{- end }}

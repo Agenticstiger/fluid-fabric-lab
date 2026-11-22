@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+# A small workload that fits the core target. footprint must PASS.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: small
+  namespace: fixture
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: small}
+  template:
+    metadata:
+      labels: {app: small}
+    spec:
+      containers:
+        - name: main
+          image: "quay.io/example/tool:1.2.3@sha256:0000000000000000000000000000000000000000000000000000000000000001"
+          resources:
+            requests: {memory: 128Mi}
+            limits: {memory: 256Mi}

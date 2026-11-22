@@ -1,0 +1,10 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+# PLANTED: a custom resource with no vendored schema. kubeconform has no
+# remote fallback here, so this is an error, not a skip. schema must FAIL.
+apiVersion: widgets.example.test/v1
+kind: Widget
+metadata:
+  name: w
+spec:
+  size: 3

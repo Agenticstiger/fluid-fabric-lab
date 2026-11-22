@@ -1,0 +1,1 @@
+PLANTED: a file with no copyright or licence information. reuse lint must FAIL.

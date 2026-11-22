@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# The dbt profile of the orchestration tier's scheduler (DBT_PROFILES_DIR), the
+# operator setting forge's `fluid apply --env local` reads on a fluid host:
+# target `local` is Trino in namespace trino, catalog `lakehouse` (the
+# Lakekeeper-backed Iceberg catalog), user `fluid-pipeline`, no authentication
+# (the coordinator's HTTP port is in-cluster only). A project's dbt_project.yml
+# names the profile `fluid`. Do not use template braces in this file:
+# lab-objects renders every object through `tpl`.
+fluid:
+  target: local
+  outputs:
+    local:
+      type: trino
+      method: none
+      user: fluid-pipeline
+      host: trino.trino.svc
+      port: 8080
+      database: lakehouse
+      schema: default
+      threads: 2

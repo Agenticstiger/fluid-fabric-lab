@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+# PLANTED: -XX:MaxHeapSize=8g arrives through JAVA_TOOL_OPTIONS from a ConfigMap key. footprint must FAIL.
+apiVersion: v1
+kind: ConfigMap
+metadata: {name: jvm-opts, namespace: fixture}
+data: {opts: "-XX:MaxHeapSize=8g"}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: keyref, namespace: fixture}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: keyref}}
+  template:
+    metadata: {labels: {app: keyref}}
+    spec:
+      containers:
+        - name: main
+          image: "quay.io/example/tool:1.2.3@sha256:0000000000000000000000000000000000000000000000000000000000000001"
+          env:
+            - name: JAVA_TOOL_OPTIONS
+              valueFrom: {configMapKeyRef: {name: jvm-opts, key: opts}}
+          resources:
+            limits: {memory: 1Gi}

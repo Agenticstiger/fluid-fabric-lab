@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+# PLANTED: a JVM sized by MaxRAMPercentage with no memory limit (unbounded). footprint must FAIL.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jvm
+  namespace: fixture
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: jvm}
+  template:
+    metadata:
+      labels: {app: jvm}
+    spec:
+      containers:
+        - name: main
+          image: "quay.io/example/tool:1.2.3@sha256:0000000000000000000000000000000000000000000000000000000000000001"
+          env:
+            - {name: JAVA_OPTS, value: "-XX:MaxRAMPercentage=75"}
+          resources:
+            requests: {memory: 512Mi}

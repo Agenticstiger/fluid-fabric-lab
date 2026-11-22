@@ -1,0 +1,18 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# PLANTED: pgsty/silo with an architecture suffix, in an env value. Must FAIL.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: silo, namespace: fixture}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: silo}}
+  template:
+    metadata: {labels: {app: silo}}
+    spec:
+      containers:
+        - name: main
+          image: "quay.io/example/tool:1.2.3@sha256:2e7d2c03a9507ae265ecf5b5356885a53393a2029d241394997265a1a25aefc6"
+          env:
+            - {name: SIDECAR_IMAGE, value: "pgsty/silo-arm64:1.0.0"}

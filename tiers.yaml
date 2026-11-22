@@ -1,0 +1,151 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# tiers.yaml - which Helmfile releases each `lab up --tier` enables, and the
+# memory each tier must fit. A figure is an estimate unless its comment gives
+# a measured value.
+#
+# How it is used
+#   - `lab up --tier T` turns on exactly `releases` of T (plus its `requires`).
+#   - The L0 footprint floor renders each tier with `helmfile template`, sums
+#     container memory requests, limits and JVM heaps (the larger of limit and
+#     heap+overhead per container), adds `outside_cluster_gib`, and FAILS when
+#     the total exceeds `memory_target_gib`. It never skips.
+#   - `lab doctor` refuses a tier whose `memory_target_gib` exceeds the
+#     container VM's memory; that refusal fails the run.
+#   - Release names match `charts[].name` in versions.lock.yaml, except
+#     envoy-gateway (chart gateway-helm).
+#   - Optional add-ons (kafbat-ui, superset) are in no tier: off by default,
+#     enabled only by an explicit flag, and they then count against the tier.
+#   - `opt_in: true` marks an add-on tier that `full` leaves out on purpose
+#     (spark: `full` has no room for a Spark pod). The render check then does not ask `full` to enable
+#     its charts.
+
+tiers_version: 1
+
+host_guidance:
+  docker_desktop_default_vm_share: 0.5   # Docker Desktop gives its VM 50% of host memory by default
+  laptop_16gb: "core plus one add-on (streaming or orchestration)"
+  machine_32gb: "full"
+
+tiers:
+  core:
+    description: "SeaweedFS, one CNPG Postgres, Lakekeeper + OpenFGA, Keycloak, single-node Trino + OPA sidecar, cert-manager/trust-manager, one Gateway, the runner Job; OpenBao beside the cluster"
+    memory_target_gib: 8          # VM target; "tight"
+    outside_cluster_gib: 0.25     # OpenBao and the mirror registry, sibling containers: 0.09 to 0.13 GiB at rest on 2026-11-18 (docs/proven.md)
+    requires: []
+    releases:
+      - cert-manager
+      - trust-manager
+      - envoy-gateway
+      - cloudnative-pg
+      - seaweedfs
+      - lakekeeper
+      - openfga
+      - keycloak-operator
+      - trino
+    workloads_not_from_charts:    # counted by the footprint floor too
+      - kind control plane and node components
+      - CNPG Cluster (PostgreSQL 17.11, one instance; databases for lakekeeper, openfga, keycloak, airflow, tofu state)
+      - Keycloak CR (resources set explicitly; operator default is 1700 MiB request / 2 GiB limit)
+      - Envoy proxy Deployment for the lab Gateway (created by envoy-gateway)
+      - OPA sidecar on the Trino coordinator (128 Mi request / 256 Mi limit; trimmed 2026-10-15, docs/pins.md 3a)
+      - fluid-runner Job
+    outside_cluster:
+      - openbao
+
+  streaming:
+    description: "Add-on: Strimzi operator + entity operator, single-node KRaft Kafka (plain and TLS+SCRAM listeners, simple authorization); proven by `lab check --tier streaming`. KafkaConnect is not in this tier"
+    addon: true
+    requires: [core]
+    adds_gib: 5                   # budget with headroom: measured 2026-11-19, Kafka, the entity operator and the operator add about 1.1 GiB at rest (docs/streaming-tier.md); KafkaConnect is not in this tier
+    memory_target_gib: 13         # core 8 + 5
+    outside_cluster_gib: 0.25
+    releases:
+      - strimzi-kafka-operator
+    workloads_not_from_charts:
+      - Kafka CR lab-kafka (single KRaft node, controller and broker roles; authorization type simple; the lab-objects release `kafka`)
+      - Strimzi entity operator (topic and user operators), 256 Mi limit each
+      - streaming check Job (`lab check --tier streaming`): one pod on the Strimzi Kafka image, 512 Mi limit
+      # NOT in this tier: KafkaConnect x2 (sales and hr; the PG-7 negative). Reason: the
+      # connect-iceberg image is not built (versions.lock.yaml built_images, digest null), and a Connect cluster
+      # on the plain Strimzi image would sink nothing. Lakekeeper's example asks 2 Gi per Connect cluster.
+
+  orchestration:
+    # The lab's scheduler (docs/orchestration-tier.md): Airflow 3.2.2 on the lab-built
+    # airflow-fluid image (`./lab build airflow-fluid`), DAGs read from s3://lab-airflow/dags/ on SeaweedFS by
+    # an S3DagBundle, `fluid apply` run by LocalExecutor on the scheduler. Proven by `lab check --tier orchestration`.
+    # Releases: `airflow` is the chart; `lab-airflow` (components/lab-airflow, in no list: the Helmfile derives it
+    # from `airflow`) is its ConfigMap of scripts and the scheduler's Role in namespace spark.
+    description: "Add-on: Airflow 3.2.2 (LocalExecutor; api-server, scheduler, dag-processor; DB on CNPG) on the airflow-fluid image, reading DAGs from S3 on SeaweedFS and running forge's `fluid apply` tasks; proven by `lab check --tier orchestration`"
+    addon: true
+    requires: [core]
+    adds_gib: 3                   # limits: api-server 640 Mi, scheduler 1 Gi (+128 Mi sync sidecar), dag-processor 512 Mi, migrate Job 384 Mi
+    memory_target_gib: 11         # core 8 + 3
+    outside_cluster_gib: 0.25
+    releases:
+      - airflow
+    workloads_not_from_charts:
+      - lab-airflow objects (ConfigMap lab-airflow-files; Role and RoleBinding airflow-spark-pods in namespace spark; no pods)
+      - sync-projects sidecar in the scheduler pod (chart extraContainers; counted with its limits above)
+
+  spark:
+    opt_in: true                  # not in `full`: `full` has no room for a Spark pod (memory, docs/spark-tier.md)
+    description: "Add-on: forge's Spark runner on the lab-built spark-iceberg image (Apache Spark 3.5.8 with Iceberg, S3A and the Kafka connector; spark-submit, local master) against Lakekeeper (Iceberg REST, vended credentials) and SeaweedFS (S3); open software only; proven by `lab check --tier spark`"
+    addon: true
+    requires: [core]
+    adds_gib: 3                   # one local-mode Spark pod under a 2.5 GiB limit; the open image's first live smoke run is in docs/spark-tier.md
+    memory_target_gib: 11         # core 8 + 3
+    outside_cluster_gib: 0.25
+    releases:
+      - lab-spark
+    workloads_not_from_charts:
+      - spark smoke Jobs (`lab check --tier spark`, the seed and the read-back, one at a time): one pod on the spark-iceberg image, local[2], 2.5 GiB limit
+      - fluid-host (Deployment in spark, rendered once `lab build fluid-runner` and `lab build spark-iceberg` have run): 1 GiB limit, idle; each `fluid apply --env local` build adds one more 2.5 GiB pod on the spark-iceberg image
+
+  e2e:
+    # The lab's end-to-end run (docs/e2e.md): products/stream-batch through forge (validate, plan, apply
+    # --env local) on core with the streaming and spark add-ons. `lab check --tier e2e` runs it and reads
+    # the rows back; `lab e2e` brings the tier up first, and other repositories call it (docs/e2e.md).
+    description: "core with the streaming and spark add-ons, plus the e2e product's Kafka topic and read-back script: a Kafka topic landed in Iceberg by a forge Spark stream, and one forge Spark SQL batch over it, run through fluid validate, plan and apply --env local in fluid-host; proven by `lab check --tier e2e`"
+    opt_in: true                  # not in `full`: it carries the spark add-on, which `full` leaves out
+    requires: [core, streaming, spark]
+    memory_target_gib: 14         # measured: the kind node peaked at about 7.6 GiB in a clean-start `lab e2e` run (docs/e2e.md); the footprint floor's count is in docs/proven.md
+    outside_cluster_gib: 0.25
+    releases:
+      - lab-e2e
+    workloads_not_from_charts:
+      - everything listed under core, streaming and spark
+      - e2e producer Job (`lab check --tier e2e`): one pod on the Strimzi Kafka image, 512 Mi limit
+      - one Spark pod at a time on the spark tier's image (the stream, then the batch, then the read-back), 2.5 GiB limit each
+
+  full:
+    description: "core, streaming and orchestration, plus the optional OTel Collector; not the spark add-on (opt-in: a Spark pod does not fit `full`; docs/spark-tier.md)"
+    requires: [core, streaming, orchestration]
+    memory_target_gib: 16         # a 32 GB machine (Docker Desktop gives its VM half the host's memory); the footprint floor's count is in docs/proven.md
+    outside_cluster_gib: 0.25
+    releases:
+      - cert-manager
+      - trust-manager
+      - envoy-gateway
+      - cloudnative-pg
+      - seaweedfs
+      - lakekeeper
+      - openfga
+      - keycloak-operator
+      - trino
+      - strimzi-kafka-operator
+      - airflow
+    workloads_not_from_charts:
+      - everything listed under core, streaming and orchestration
+
+optional_addons:
+  kafbat-ui:
+    release: kafka-ui
+    requires: [streaming]
+    default: off
+  superset:
+    release: superset
+    requires: [core]
+    default: off
+    note: "Chart is marked deprecated upstream and its Postgres/Redis subcharts are Bitnami (denied): needs CNPG plus a non-Bitnami cache before it can be enabled."

@@ -1,0 +1,11 @@
+SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+SPDX-License-Identifier: LicenseRef-UBI-EULA
+
+SYNTHETIC L0 FIXTURE TEXT. Written by Agentics for tests/fixtures; not the real licence text,
+only its distinguishing phrases. Do not reuse.
+
+END USER LICENSE AGREEMENT
+RED HAT UNIVERSAL BASE IMAGE
+
+Include this agreement, unmodified, in all distributions of container images
+sourced, built or otherwise derived from the Programs.

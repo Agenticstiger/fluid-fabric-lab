@@ -1,0 +1,17 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+# PLANTED: a ReplicationController, 4 replicas of 64Gi. footprint must count it and FAIL.
+apiVersion: v1
+kind: ReplicationController
+metadata: {name: big, namespace: fixture}
+spec:
+  replicas: 4
+  selector: {app: big}
+  template:
+    metadata: {labels: {app: big}}
+    spec:
+      containers:
+        - name: main
+          image: "quay.io/example/tool:1.2.3@sha256:0000000000000000000000000000000000000000000000000000000000000001"
+          resources:
+            limits: {memory: 64Gi}

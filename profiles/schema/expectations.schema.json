@@ -1,0 +1,162 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:fluid-fabric-lab:profiles:expectations:v1",
+  "title": "Expectations ledger",
+  "description": "The expected status of every product x the 11 fluid stages for one profile and tier (profiles/<profile>/expected/<tier>.yaml). `lab accept` passes only if every observed status equals this ledger in BOTH directions: an unexpected `passed` fails the run just as an unexpected `failed` does. Changing a cell needs a commit that names the capability change behind it. Shape borrowed from the Gateway API conformance report (sigs.k8s.io/gateway-api, conformance/apis/v1: one report per implementation, results per profile).",
+  "$comment": "Keywords are kept to the same small 2020-12 subset as site.schema.json (plus uniqueItems and not) so the stdlib L0 check can evaluate it. Stage ids are the fluid command names: `generate-artifacts` is `fluid generate artifacts`; every other id is the command itself.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "profile", "tier", "stagesRun", "runners", "products"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "profile": {
+      "description": "Name of the profile directory this ledger belongs to.",
+      "type": "string",
+      "pattern": "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$"
+    },
+    "tier": { "enum": ["core", "streaming", "orchestration", "full", "spark"] },
+    "stagesRun": {
+      "description": "Whether any stage has run for this ledger. While false, nothing has run, so every cell is `pending` with the not_run code (enforced below).",
+      "type": "boolean"
+    },
+    "runners": {
+      "description": "How `lab accept` drives the stages: `cli` runs fluid directly; `dag` runs the generated Airflow DAG and exists only in tiers that deploy orchestration.",
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "enum": ["cli", "dag"] }
+    },
+    "products": {
+      "description": "Product id -> its cells, per runner.",
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": { "type": "string", "pattern": "^[a-z][a-z0-9-]{1,62}$" },
+      "additionalProperties": { "$ref": "#/$defs/product" }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "stagesRun": { "const": false } }, "required": ["stagesRun"] },
+      "then": {
+        "properties": {
+          "products": {
+            "additionalProperties": {
+              "properties": {
+                "runners": { "additionalProperties": { "additionalProperties": { "$ref": "#/$defs/notRunCell" } } }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "tier": { "enum": ["core", "streaming", "spark"] } }, "required": ["tier"] },
+      "then": {
+        "properties": {
+          "runners": { "const": ["cli"] },
+          "products": { "additionalProperties": { "properties": { "runners": { "propertyNames": { "const": "cli" } } } } }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "tier": { "enum": ["orchestration", "full"] } }, "required": ["tier"] },
+      "then": {
+        "properties": {
+          "runners": { "const": ["cli", "dag"] },
+          "products": { "additionalProperties": { "properties": { "runners": { "required": ["cli", "dag"] } } } }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "status": {
+      "description": "The six status words. `waived` is reserved and not accepted.",
+      "enum": ["passed", "failed", "unsupported", "not_checked", "not_applicable", "pending"]
+    },
+    "product": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["summary", "domains", "runners"],
+      "properties": {
+        "summary": { "type": "string", "minLength": 10 },
+        "domains": {
+          "description": "Domains the product runs in. Single-domain runs record cross-domain checks as `not_checked`, never `passed`.",
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^[a-z][a-z0-9-]{0,30}$" }
+        },
+        "runners": {
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": { "enum": ["cli", "dag"] },
+          "required": ["cli"],
+          "additionalProperties": { "$ref": "#/$defs/stageMatrix" }
+        }
+      }
+    },
+    "stageMatrix": {
+      "description": "All 11 stages, no more and no fewer.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bundle", "validate", "generate-artifacts", "validate-artifacts", "diff", "plan", "apply", "policy-apply", "verify", "publish", "schedule-sync"],
+      "properties": {
+        "bundle": { "$ref": "#/$defs/cell" },
+        "validate": { "$ref": "#/$defs/cell" },
+        "generate-artifacts": { "$ref": "#/$defs/cell" },
+        "validate-artifacts": { "$ref": "#/$defs/cell" },
+        "diff": { "$ref": "#/$defs/cell" },
+        "plan": { "$ref": "#/$defs/cell" },
+        "apply": { "$ref": "#/$defs/cell" },
+        "policy-apply": { "$ref": "#/$defs/cell" },
+        "verify": { "$ref": "#/$defs/cell" },
+        "publish": { "$ref": "#/$defs/cell" },
+        "schedule-sync": { "$ref": "#/$defs/cell" }
+      }
+    },
+    "cell": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "reasonCode", "reason"],
+      "properties": {
+        "status": { "$ref": "#/$defs/status" },
+        "reasonCode": {
+          "description": "Stable machine tag for the reason (for example not_run, addon_absent, single_domain, slice_pending, probe_unauthorized, probe_unreachable).",
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{2,63}$"
+        },
+        "reason": { "type": "string", "minLength": 10 },
+        "capability": {
+          "description": "Pack capability key behind this expectation, in the <stage>.<check> form.",
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*(\\.[a-z0-9_*]+)+$"
+        },
+        "evidence": {
+          "description": "The dated run that proved this cell. Required for `passed`: a site's word never produces `passed`, only a stage's own verification does.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["run", "date", "report"],
+          "properties": {
+            "run": { "type": "string", "minLength": 3 },
+            "date": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
+            "report": { "type": "string", "pattern": "^conformance/reports/[^\\s]+$" }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "status": { "const": "passed" } }, "required": ["status"] },
+          "then": { "required": ["evidence"] }
+        }
+      ]
+    },
+    "notRunCell": {
+      "description": "Nothing has run (stagesRun is false), so every cell is `pending` with the not_run code. Never `passed`.",
+      "properties": {
+        "status": { "const": "pending" },
+        "reasonCode": { "const": "not_run" }
+      },
+      "not": { "required": ["evidence"] }
+    }
+  }
+}

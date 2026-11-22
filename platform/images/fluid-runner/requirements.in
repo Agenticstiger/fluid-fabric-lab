@@ -1,0 +1,18 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# What the fluid-runner image installs. requirements.txt is compiled from this
+# file with every distribution pinned by version and sha256, for every
+# platform:
+#   ./compile.sh
+# These versions must match versions.lock.yaml (built_images, fluid-runner
+# `contents`); tests/launcher/test_build.py checks that.
+#
+# forge is built from the source archive of one commit of Agenticstiger/forge-cli
+# (the archive is checked against the lock's sha256 by the Dockerfile), so it is
+# not in requirements.txt: compile.sh reads only its dependencies from here, and
+# --no-emit-package keeps forge itself out. The commit below is the lock's.
+data-product-forge[local,aws] @ https://github.com/Agenticstiger/forge-cli/archive/c826f3ae698493dd43aaa00a1dc63bafb29dba52.tar.gz
+dbt-core==1.10.23
+dbt-trino==1.10.6
+duckdb==1.5.6

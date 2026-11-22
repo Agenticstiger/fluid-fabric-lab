@@ -1,0 +1,8 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# Python bytecode from local test runs. The gates set dont_write_bytecode, but
+# `python3 -I` ignores PYTHONDONTWRITEBYTECODE, so a local run can still write
+# it; ignored here so `reuse lint` and the gates see only real files.
+__pycache__/
+*.py[cod]

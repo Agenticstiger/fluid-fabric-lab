@@ -1,0 +1,14 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# Runtime reference only: an OSL-3.0 operator image the lab would PULL by
+# digest (never vendored), with its obligations recorded. The licence gate must PASS.
+lock_version: 1
+images:
+  - id: example-operator
+    component: example
+    use: optional
+    ref: "oci.example.test/sdp/example-operator:26.7.0"
+    digest: "sha256:65a3b505dcbf0f4977b9f6a7e1c94487c9042e7a0e728a3f09ecfa1d4760cbc5"
+    license: {spdx: OSL-3.0, source: "https://example.test/operator"}
+    obligations: "Internal machines only; OSL-3.0 s5 External Deployment: no shared or partner-facing use without an OSL notice and an assent step (s9); never in an air-gap bundle; never patched."

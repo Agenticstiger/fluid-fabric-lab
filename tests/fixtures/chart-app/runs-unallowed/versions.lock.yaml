@@ -1,0 +1,15 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+# PLANTED: lock runs 1.1.0 on appVersion 1.0.0 with no allowlist. chart_app must FAIL.
+lock_version: 1
+charts:
+  - name: demo
+    component: demo
+    use: used
+    version: 0.1.0
+    app_version: "1.0.0"
+    runs: "1.1.0"
+    file: platform/charts/demo
+    subcharts: []
+images:
+  - {id: demo, component: demo, use: used, ref: "quay.io/example/demo:1.1.0", digest: "sha256:b553f687e4dd1d212b25b1b0108711969d5f4e18cd27d0678bdcb0da0f49c362"}

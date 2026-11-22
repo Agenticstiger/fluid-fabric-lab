@@ -1,0 +1,54 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# kafbat UI v1.5.0 (chart kafka-ui 1.6.5). OPTIONAL, off by default;
+# enabled with --state-values-set addons.kafbat-ui=true and
+# only with the streaming tier. Image injected by digest by the Helmfile.
+#
+# It connects over the `tls` listener (9093: TLS from the lab CA, SCRAM-SHA-512)
+# as KafkaUser `kafka-ui`, which has cluster ACLs only (components/kafka/values.yaml:
+# a topic ACL would close that topic to the anonymous stream on `plain`).
+# Strimzi generates the user's Secret `kafka-ui`; its `sasl.jaas.config` key
+# reaches the pod as an environment variable, and the lab CA (ConfigMap
+# lab-ca-bundle, in every namespace) is its PEM truststore.
+#
+# NOT RUN LIVE: the render is checked offline (`lab l0`), but the UI has not
+# been started in a lab. The pod runs as uid 1000 under the namespace's Pod
+# Security `restricted`; if the image refuses that uid, this is where it shows.
+replicaCount: 1
+yamlApplicationConfig:
+  kafka:
+    clusters:
+      - name: lab
+        bootstrapServers: lab-kafka-kafka-bootstrap.kafka.svc:9093
+        properties:
+          security.protocol: SASL_SSL
+          sasl.mechanism: SCRAM-SHA-512
+          ssl.truststore.type: PEM
+          ssl.truststore.location: /etc/lab-ca/ca.crt
+  auth:
+    type: DISABLED      # reachable only by port-forward; OAuth2 via Keycloak when exposed
+  management:
+    health:
+      ldap:
+        enabled: false
+envs:
+  secretMappings:
+    KAFKA_CLUSTERS_0_PROPERTIES_SASL_JAAS_CONFIG:
+      name: kafka-ui
+      keyName: sasl.jaas.config
+volumes:
+  - name: lab-ca
+    configMap: {name: lab-ca-bundle}
+volumeMounts:
+  - {name: lab-ca, mountPath: /etc/lab-ca, readOnly: true}
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  seccompProfile: {type: RuntimeDefault}
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities: {drop: [ALL]}
+resources:
+  requests: {cpu: 50m, memory: 256Mi}
+  limits: {cpu: 500m, memory: 512Mi}

@@ -1,0 +1,15 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# PLANTED: an untagged image in a ReplicationController. Must FAIL.
+apiVersion: v1
+kind: ReplicationController
+metadata: {name: rc, namespace: fixture}
+spec:
+  replicas: 1
+  selector: {app: rc}
+  template:
+    metadata: {labels: {app: rc}}
+    spec:
+      containers:
+        - {name: main, image: quay.io/example/tool}

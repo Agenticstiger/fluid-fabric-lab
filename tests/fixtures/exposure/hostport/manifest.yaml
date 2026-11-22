@@ -1,0 +1,18 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# PLANTED (hostPort on a container). L0 selftest: the exposure gate must FAIL.
+apiVersion: apps/v1
+kind: DaemonSet
+metadata: {name: listener, namespace: fixture}
+spec:
+  selector:
+    matchLabels: {app: listener}
+  template:
+    metadata:
+      labels: {app: listener}
+    spec:
+      containers:
+        - name: main
+          image: quay.io/example/tool:1.2.3
+          ports: [{containerPort: 8080, hostPort: 8080}]

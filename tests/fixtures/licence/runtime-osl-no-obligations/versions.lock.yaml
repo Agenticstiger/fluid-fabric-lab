@@ -1,0 +1,13 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# PLANTED: the same OSL-3.0 runtime reference WITHOUT an obligations field.
+# The licence gate must FAIL.
+lock_version: 1
+images:
+  - id: example-operator
+    component: example
+    use: optional
+    ref: "oci.example.test/sdp/example-operator:26.7.0"
+    digest: "sha256:65a3b505dcbf0f4977b9f6a7e1c94487c9042e7a0e728a3f09ecfa1d4760cbc5"
+    license: {spdx: OSL-3.0, source: "https://example.test/operator"}

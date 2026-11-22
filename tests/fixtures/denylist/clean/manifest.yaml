@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# PLANTED (clean digest-pinned image). L0 selftest: the denylist gate must PASS.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ok
+  namespace: fixture
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: ok}
+  template:
+    metadata:
+      labels: {app: ok}
+    spec:
+      containers:
+        - name: main
+          image: "quay.io/example/tool:1.2.3@sha256:aaa9402664f1a41f40ebbc52c9993eb66aeb366602958fdfaa283b71e64db123"

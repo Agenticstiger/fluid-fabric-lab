@@ -1,0 +1,12 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+# PLANTED: a CNPG cluster with shared_buffers 16GB and no limit. footprint must FAIL.
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata: {name: pg, namespace: fixture}
+spec:
+  instances: 1
+  imageName: "quay.io/example/tool:1.2.3@sha256:0000000000000000000000000000000000000000000000000000000000000001"
+  postgresql:
+    parameters: {shared_buffers: 16GB}
+

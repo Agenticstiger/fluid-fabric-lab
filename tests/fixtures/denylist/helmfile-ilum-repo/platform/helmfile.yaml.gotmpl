@@ -1,0 +1,11 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# PLANTED: a Helmfile that pulls a chart from the Ilum chart repository.
+# The denylist gate's text scan must FAIL.
+repositories:
+  - name: vendor
+    url: https://charts.ilum.cloud
+releases:
+  - name: spark
+    chart: vendor/ilum

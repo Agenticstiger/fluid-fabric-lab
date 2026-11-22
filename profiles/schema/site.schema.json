@@ -1,0 +1,364 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:fluid-fabric-lab:profiles:site:v1",
+  "title": "Site profile",
+  "description": "One site profile (profiles/<name>/site.yaml): the site's endpoints, identity NAMES, credential REFERENCES and typed site FACTS. It never holds secret values, never names a distribution or platform as a capability key, and never raises a pack's support level: a site's word never produces `passed`, only a stage's own verification does. Facts map to pack capability keys through the pack manifest, not through this file.",
+  "$comment": "Keywords are kept to a small, widely implemented subset of 2020-12 (type, enum, const, pattern, minimum, maximum, properties, patternProperties, propertyNames, additionalProperties, required, items, minItems, minLength, minProperties, oneOf, allOf, if/then, $ref/$defs) so the stdlib L0 check can evaluate it. Cross-field rules JSON Schema cannot express are listed under x-crossFieldRules and are enforced by the L0 profile check, not by this file.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "site", "jurisdiction", "tiers", "endpoints", "facts"],
+  "properties": {
+    "schemaVersion": {
+      "description": "Version of this schema the profile was written against.",
+      "const": 1
+    },
+    "site": {
+      "description": "A label only. Never used as a capability key, never matched by a pack, never a distribution or product name.",
+      "type": "string",
+      "pattern": "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$"
+    },
+    "jurisdiction": {
+      "description": "The jurisdiction the site's data lives under. `lab` for test sites that hold no real data.",
+      "type": "string",
+      "pattern": "^[a-z0-9]([a-z0-9-]{0,30}[a-z0-9])?$"
+    },
+    "tiers": {
+      "description": "Which lab tiers this profile supports and the expectations ledger for each (every tier has its own expectations file).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["default", "supported"],
+      "properties": {
+        "default": { "$ref": "#/$defs/tierName" },
+        "supported": {
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": { "$ref": "#/$defs/tierName" },
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["expectations"],
+            "properties": {
+              "expectations": {
+                "description": "Path to the tier's expectations ledger, relative to the profile directory. Must validate against expectations.schema.json.",
+                "type": "string",
+                "pattern": "^expected/[a-z0-9-]+\\.yaml$"
+              }
+            }
+          }
+        }
+      }
+    },
+    "endpoints": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["icebergRest", "trino", "oidc", "kubernetes", "publish"],
+      "properties": {
+        "icebergRest": {
+          "description": "Iceberg REST catalog. catalogKind selects a strategy keyed by catalog kind (forge providers/_iceberg_catalog.py CatalogKind); a generic `rest` catalog gets the generic path.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["catalogKind", "uri", "warehouses"],
+          "properties": {
+            "catalogKind": { "enum": ["rest", "lakekeeper", "polaris", "nessie"] },
+            "uri": { "$ref": "#/$defs/httpsUrl" },
+            "caBundle": { "$ref": "#/$defs/caBundle" },
+            "warehouses": {
+              "description": "Domain -> warehouse name. Names only.",
+              "type": "object",
+              "minProperties": 1,
+              "propertyNames": { "$ref": "#/$defs/domainName" },
+              "additionalProperties": { "$ref": "#/$defs/identifierName" }
+            }
+          }
+        },
+        "objectStore": {
+          "description": "S3-protocol object store. Used only to write OPA bundles; table data access goes through catalog-vended credentials.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["endpoint", "region", "pathStyle"],
+          "properties": {
+            "endpoint": { "$ref": "#/$defs/httpsUrl" },
+            "region": { "type": "string", "pattern": "^[a-z0-9-]{1,32}$" },
+            "pathStyle": { "type": "boolean" },
+            "caBundle": { "$ref": "#/$defs/caBundle" }
+          }
+        },
+        "trino": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["host", "port", "auth"],
+          "properties": {
+            "host": { "$ref": "#/$defs/hostname" },
+            "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+            "caBundle": { "$ref": "#/$defs/caBundle" },
+            "auth": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["method"],
+              "properties": {
+                "method": {
+                  "description": "Trino client authentication method.",
+                  "enum": ["password", "oauth2", "jwt", "certificate", "kerberos", "header"]
+                },
+                "credential": { "$ref": "#/$defs/credentialRef" }
+              }
+            }
+          }
+        },
+        "oidc": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["issuer", "clientId", "credential"],
+          "properties": {
+            "issuer": { "$ref": "#/$defs/httpsUrl" },
+            "clientId": { "$ref": "#/$defs/identifierName" },
+            "credential": { "$ref": "#/$defs/credentialRef" },
+            "caBundle": { "$ref": "#/$defs/caBundle" }
+          }
+        },
+        "opaBundles": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["transport"],
+          "properties": {
+            "transport": { "enum": ["s3", "oci", "http", "configmap_lab"] },
+            "prefix": { "type": "string", "pattern": "^(s3|oci|https)://[^\\s]+$" },
+            "signingKeyId": { "$ref": "#/$defs/identifierName" },
+            "readCredential": {
+              "description": "Reference to the static, read-only, bundle-prefix-only key OPA uses when opa.bundle_credentials is static_read_only.",
+              "$ref": "#/$defs/credentialRef"
+            }
+          }
+        },
+        "groupLookup": {
+          "description": "Where group membership is resolved. Site glue; the profile only declares the endpoint.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["route"],
+          "properties": {
+            "route": { "enum": ["opa", "ldap"] },
+            "endpoint": { "type": "string", "pattern": "^(https|ldaps)://[^\\s]+$" }
+          }
+        },
+        "connect": {
+          "description": "Kafka Connect delivery per domain. The route is chosen by platform, never by detection.",
+          "type": "object",
+          "propertyNames": { "$ref": "#/$defs/domainName" },
+          "additionalProperties": {
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["api", "namespace", "strimzi"],
+                "properties": {
+                  "api": { "enum": ["strimzi.io/v1", "strimzi.io/v1beta2"] },
+                  "namespace": { "$ref": "#/$defs/k8sName" },
+                  "restUrl": { "$ref": "#/$defs/httpsUrl" },
+                  "strimzi": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["crClusterLabel"],
+                    "properties": { "crClusterLabel": { "$ref": "#/$defs/k8sName" } }
+                  }
+                }
+              },
+              {
+                "description": "Bring-your-own Connect cluster on another platform.",
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["api", "url"],
+                "properties": {
+                  "api": { "const": "rest" },
+                  "url": { "$ref": "#/$defs/httpsUrl" },
+                  "credential": { "$ref": "#/$defs/credentialRef" }
+                }
+              }
+            ]
+          }
+        },
+        "kubernetes": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["inCluster"],
+              "properties": { "inCluster": { "const": true } }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["context"],
+              "properties": { "context": { "$ref": "#/$defs/identifierName" } }
+            },
+            {
+              "description": "The site has no Kubernetes API (facts.kubernetes.api must then be absent).",
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["absent"],
+              "properties": { "absent": { "const": true } }
+            }
+          ]
+        },
+        "keyService": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["api", "address"],
+          "properties": {
+            "api": { "description": "Protocol of the key service (the Vault HTTP API, which OpenBao serves).", "enum": ["vault"] },
+            "address": { "$ref": "#/$defs/httpsUrl" },
+            "caBundle": { "$ref": "#/$defs/caBundle" },
+            "authRole": { "description": "Kubernetes-auth role NAME, not a token.", "$ref": "#/$defs/identifierName" }
+          }
+        },
+        "otlp": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["endpoint"],
+          "properties": { "endpoint": { "$ref": "#/$defs/httpsUrl" } }
+        },
+        "kafka": {
+          "description": "The Kafka cluster a Spark stream reads, as forge's parameters.spark.source names it (bootstrapServers and auth; forge-cli fluid_build/spark/compiler.py `_kafka`).",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["bootstrapServers", "auth"],
+          "properties": {
+            "bootstrapServers": { "type": "string", "pattern": "^[A-Za-z0-9.-]+:[0-9]{1,5}(,[A-Za-z0-9.-]+:[0-9]{1,5})*$" },
+            "auth": { "description": "forge's Kafka source auth: `none` (PLAINTEXT) or `msk-iam`. It has no SCRAM or mTLS option.", "enum": ["none", "msk-iam"] }
+          }
+        },
+        "spark": {
+          "description": "Where `fluid apply --env <env>` runs Spark builds with runtime local: the operator's spark-submit, its properties file and the artifact root (forge-cli FLUID_SPARK_SUBMIT_EXECUTABLE, FLUID_SPARK_SUBMIT_PROPERTIES_FILE, FLUID_SPARK_LOCAL_ROOT).",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["submitExecutable", "propertiesFile", "artifactsRoot"],
+          "properties": {
+            "submitExecutable": { "type": "string", "pattern": "^/[A-Za-z0-9._/-]+$" },
+            "propertiesFile": { "type": "string", "pattern": "^/[A-Za-z0-9._/-]+$" },
+            "artifactsRoot": { "type": "string", "pattern": "^s3://[a-z0-9][a-z0-9.-]{1,61}[a-z0-9](/[A-Za-z0-9._/-]*)?$" },
+            "host": { "description": "Where fluid runs (a pod name or a host), so a stream's supervisor outlives one `fluid apply`.", "type": "string", "minLength": 1 }
+          }
+        },
+        "scheduler": {
+          "description": "Where `fluid schedule-sync` puts the generated DAGs (stage 11) and which scheduler reads them.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "dagsDestination"],
+          "properties": {
+            "kind": { "enum": ["airflow"] },
+            "dagsDestination": { "type": "string", "pattern": "^(s3|file)://[A-Za-z0-9._/-]+$" }
+          }
+        },
+        "publish": {
+          "description": "Publish target. null means no default target: generated CI passes an explicit --target, and publish without one records forge's real status.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["defaultTarget"],
+          "properties": {
+            "defaultTarget": { "oneOf": [ { "type": "null" }, { "$ref": "#/$defs/identifierName" } ] }
+          }
+        }
+      }
+    },
+    "facts": {
+      "description": "Typed site facts. A fact the site does not declare resolves to `unknown`, which is falsy and fails under --strict. Probes confirm facts; they never pick a route. Unknown keys are rejected so a typo cannot silently become `unknown`.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "catalog.auth": { "enum": ["none", "oauth2", "sigv4"] },
+        "storage.credentials": { "enum": ["static", "sts_web_identity", "vended"] },
+        "streaming.connector_api": { "enum": ["strimzi.io/v1", "strimzi.io/v1beta2", "rest", "absent"] },
+        "trino.version": { "type": "string", "pattern": "^[0-9]{3,4}$" },
+        "trino.opa.row_filters": { "enum": ["configured", "absent"] },
+        "trino.opa.column_masks": { "enum": ["configured", "absent"] },
+        "opa.bundle_transport": { "enum": ["s3", "oci", "http", "configmap_lab", "absent"] },
+        "opa.bundle_credentials": { "enum": ["static_read_only", "aws_sts"] },
+        "opa.configmap_labels": {
+          "description": "Label(s) that make the site's OPA load a ConfigMap. Required (non-empty) when opa.bundle_transport is configmap_lab.",
+          "type": "object",
+          "propertyNames": { "type": "string", "pattern": "^([a-z0-9.-]{1,253}/)?[A-Za-z0-9]([A-Za-z0-9_.-]{0,61}[A-Za-z0-9])?$" },
+          "additionalProperties": { "type": "string", "pattern": "^[A-Za-z0-9_.-]{0,63}$" }
+        },
+        "identity.trino_groups": { "enum": ["opa", "ldap", "absent"] },
+        "identity.client_provisioning": { "enum": ["keycloak_admin", "oidc_dcr", "absent"] },
+        "keys.state_encryption": { "enum": ["openbao_transit", "pbkdf2_substitute"] },
+        "kubernetes.api": { "enum": ["present", "absent"] }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "opa.bundle_transport": { "const": "configmap_lab" } }, "required": ["opa.bundle_transport"] },
+          "then": { "required": ["opa.configmap_labels"], "properties": { "opa.configmap_labels": { "minProperties": 1 } } }
+        }
+      ]
+    },
+    "substitutes": {
+      "description": "Components in this profile that stand in for a production component. The conformance report marks every cell they touch `substitute`, never `reference`.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["plane", "standsInFor", "reason"],
+        "properties": {
+          "plane": { "enum": ["object_store", "key_service", "opa_bundles", "state_encryption", "identity", "streaming", "catalog", "query_engine", "spark_runtime", "scheduler"] },
+          "standsInFor": { "type": "string", "minLength": 3 },
+          "reason": { "type": "string", "minLength": 10 }
+        }
+      }
+    }
+  },
+  "x-crossFieldRules": [
+    "facts.streaming.connector_api equals endpoints.connect.<domain>.api for every declared domain; `absent` requires endpoints.connect to be missing or empty.",
+    "facts.kubernetes.api is `absent` exactly when endpoints.kubernetes is {absent: true}.",
+    "facts.opa.bundle_transport equals endpoints.opaBundles.transport when both are set; opa.bundle_credentials static_read_only requires endpoints.opaBundles.readCredential.",
+    "facts.identity.trino_groups equals endpoints.groupLookup.route when both are set.",
+    "facts.keys.state_encryption openbao_transit requires endpoints.keyService.",
+    "tiers.default is a key of tiers.supported; every tiers.supported.<t>.expectations file exists, validates against expectations.schema.json and declares tier <t> and this profile's directory name.",
+    "Credential references never resolve at validation time: the check reads names only and never reads the environment, a file or a secret."
+  ],
+  "$defs": {
+    "tierName": { "enum": ["core", "streaming", "orchestration", "full", "spark"] },
+    "domainName": { "type": "string", "pattern": "^[a-z][a-z0-9-]{0,30}$" },
+    "identifierName": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$" },
+    "k8sName": { "type": "string", "pattern": "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$" },
+    "hostname": { "type": "string", "pattern": "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$" },
+    "httpsUrl": {
+      "description": "Every endpoint is HTTPS (`lab check` criterion (i)). No userinfo: a URL never carries a credential.",
+      "type": "string",
+      "pattern": "^https://[^\\s@/]+(/[^\\s@]*)?$"
+    },
+    "caBundle": { "description": "Absolute path to a PEM CA bundle mounted into the runner.", "type": "string", "pattern": "^/[^\\s]+\\.(pem|crt)$" },
+    "credentialRef": {
+      "description": "A REFERENCE to a credential, never its value. Environment names carry the FLUID_ prefix so they survive the generated DAG's env -i prefix allowlist.",
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["env"],
+          "properties": { "env": { "type": "string", "pattern": "^FLUID_[A-Z0-9_]{2,100}$" } }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kubernetesSecret"],
+          "properties": {
+            "kubernetesSecret": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["namespace", "name", "key"],
+              "properties": {
+                "namespace": { "$ref": "#/$defs/k8sName" },
+                "name": { "$ref": "#/$defs/k8sName" },
+                "key": { "type": "string", "pattern": "^[A-Za-z0-9._-]{1,253}$" }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["file"],
+          "properties": { "file": { "type": "string", "pattern": "^/[^\\s]+$" } }
+        }
+      ]
+    }
+  }
+}

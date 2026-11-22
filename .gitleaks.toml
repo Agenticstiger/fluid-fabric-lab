@@ -1,0 +1,27 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# gitleaks configuration for fluid-fabric-lab (gitleaks v8.30.1, pinned in
+# versions.lock.yaml). Run offline by tools/l0/secret_scan.py:
+#   gitleaks dir --config .gitleaks.toml --redact .
+# Extends gitleaks' default rule set and adds the lab's canary pattern.
+
+title = "fluid-fabric-lab"
+
+[extend]
+useDefault = true
+
+# Acceptance plants canary secrets and proves they never
+# appear in a plan, state file, run record or log. A canary must never be
+# committed either.
+[[rules]]
+id = "fluid-lab-canary"
+description = "fluid-fabric-lab canary secret"
+regex = '''FLUID_LAB_CANARY_[A-Z0-9]{20,}'''
+keywords = ["fluid_lab_canary_"]
+
+# Planted secrets that tools/l0/selftest scans on purpose (from a temporary
+# copy, where this path prefix does not exist, so they ARE detected there).
+[[allowlists]]
+description = "planted L0 secret fixtures"
+paths = ['''(^|/)tests/fixtures/secrets/''']

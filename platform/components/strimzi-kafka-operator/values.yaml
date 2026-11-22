@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# Strimzi 1.2.0 operator (1.3.0 is a candidate after soak).
+# It watches the `kafka` namespace only (kafka release); KafkaConnect is not
+# installed yet. Operator, topic/user operator, init,
+# bridge, build and Kafka 4.3.1 exporter/cruise-control images are injected by
+# digest from versions.lock.yaml by the Helmfile.
+#
+# The per-version Kafka image maps (STRIMZI_KAFKA_IMAGES and friends) are
+# left as the chart's tags on purpose: one digest cannot be correct for 4.2.0,
+# 4.2.1, 4.3.0 and 4.3.1 at once, and pinning them all to the 4.3.1 digest
+# would silently run 4.3.1 under another version label. The lab's Kafka
+# CR sets `image:` by digest explicitly, and the local mirror
+# holds only the locked digests, so any other version fails to pull (loudly).
+replicas: 1
+watchNamespaces: [kafka]   # sales and hr (KafkaConnect) come back with the connect-iceberg image
+watchAnyNamespace: false
+featureGates: ""
+resources:
+  requests: {cpu: 100m, memory: 256Mi}
+  limits: {cpu: "1", memory: 384Mi}
+dashboards:
+  enabled: false

@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# The lab (`--env local`): the base contract's values, restated so `--env local`
+# names a real overlay. `fluid apply --env local` runs in the lab's fluid-host
+# pod: Spark builds go to the lab's open Spark image through the operator's
+# FLUID_SPARK_SUBMIT_EXECUTABLE, and dbt-trino reads the operator's
+# DBT_PROFILES_DIR.
+builds:
+  - id: stream-raw
+    properties:
+      parameters:
+        spark:
+          runtime: local
+          source:
+            bootstrapServers: lab-kafka-kafka-bootstrap.kafka.svc:9092
+            auth: none
+  - id: daily-curated
+    properties:
+      parameters:
+        spark:
+          runtime: local
+  - id: hourly-marts
+    engine: dbt-trino
+    properties:
+      target: local

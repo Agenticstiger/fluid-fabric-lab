@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# objects: map of <key> -> Kubernetes object. Rendered in key order. String
+# fields may use templates, e.g. '{{ .Values.images.keycloak }}'; the
+# Helmfile injects `images` from versions.lock.yaml. An object without
+# metadata.namespace gets the release namespace unless its kind is listed in
+# clusterScopedKinds.
+objects: {}
+images: {}
+clusterScopedKinds:
+  - ClusterIssuer
+  - ClusterRole
+  - ClusterRoleBinding
+  - CustomResourceDefinition
+  - GatewayClass
+  - Namespace
+  - StorageClass
+  - Bundle            # trust-manager Bundle is cluster-scoped
+  - ClusterImageCatalog

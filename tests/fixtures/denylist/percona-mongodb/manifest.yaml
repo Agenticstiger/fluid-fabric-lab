@@ -1,0 +1,15 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# PLANTED: Percona Server for MongoDB (SSPL). Must FAIL.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: mongo, namespace: fixture}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: mongo}}
+  template:
+    metadata: {labels: {app: mongo}}
+    spec:
+      containers:
+        - {name: main, image: "docker.io/percona/percona-server-mongodb:8.0.4@sha256:2e7d2c03a9507ae265ecf5b5356885a53393a2029d241394997265a1a25aefc6"}

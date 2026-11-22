@@ -1,0 +1,202 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# The orchestration add-on: Airflow chart 1.22.0 (appVersion 3.2.2), the lab's
+# scheduler (docs/orchestration-tier.md). The
+# image is the lab-built airflow-fluid image (platform/images/airflow-fluid:
+# apache/airflow:3.2.2 plus forge, dbt-core and dbt-trino in /opt/fluid/venv),
+# named by the Helmfile from versions.lock.yaml, never here.
+#
+# LocalExecutor, api-server, scheduler and dag-processor; no triggerer, redis,
+# statsd, pgbouncer or the bundled Bitnami PostgreSQL. The metadata DB is the
+# lab CNPG cluster (role and database `airflow`). No default admin user and no
+# secret value in this file: every Secret is written by `lab up` from OpenBao
+# (labctl/credentials.py `airflow_secrets`), and the chart reads them by name.
+#
+# DAGs come from S3, not a bind mount: a DAG bundle of class S3DagBundle
+# (apache-airflow-providers-amazon, in the official image) on bucket lab-airflow,
+# prefix dags/, through Airflow connection `lab_s3` (SeaweedFS at
+# https://s3.lab.test, path-style, the lab CA, an identity limited to that
+# bucket). The connection is the env var AIRFLOW_CONN_LAB_S3 on every component:
+# the api-server resolves the connection for a running task, the dag-processor
+# and the scheduler's task runner use it for the bundle.
+#
+# Pod Security `restricted`: every pod runs non-root (uid 50000, gid 0) with
+# the runtime's seccomp profile, no privilege escalation and no capabilities.
+executor: LocalExecutor
+allowPodLaunching: false      # the scheduler's one pod permission is the Role in namespace spark (components/lab-airflow)
+redis:
+  enabled: false
+statsd:
+  enabled: false
+postgresql:
+  enabled: false
+pgbouncer:
+  enabled: false
+triggerer:
+  enabled: false
+createUserJob:
+  enabled: false              # no default admin/admin user; the one login is in Secret airflow-simple-auth
+cleanup:
+  enabled: false
+databaseCleanup:
+  enabled: false
+data:
+  metadataSecretName: airflow-metadata     # key `connection`: postgresql://airflow:...@lab-pg-rw.lab-db.svc:5432/airflow?sslmode=require
+fernetKeySecretName: airflow-fernet-key
+apiSecretKeySecretName: airflow-api-secret-key
+jwtSecretName: airflow-jwt-secret
+uid: 50000
+gid: 0
+securityContexts:
+  pod:
+    runAsUser: 50000
+    runAsGroup: 0
+    fsGroup: 0
+    runAsNonRoot: true
+    seccompProfile: {type: RuntimeDefault}
+  containers:
+    allowPrivilegeEscalation: false
+    capabilities: {drop: [ALL]}
+config:
+  core:
+    load_examples: "False"
+    parallelism: 4
+    # Airflow 3's SimpleAuthManager (its default, "for development and testing"): the users and roles are
+    # listed here, the passwords are read from a JSON file the api-server opens for writing, so the init
+    # container below copies Secret airflow-simple-auth into an emptyDir. POST /auth/token with that login
+    # returns a token for the REST API (`lab check` does this; so does a person with curl). FAB would need
+    # a user created in the database, and the chart's createUserJob takes its password as a plain value.
+    auth_manager: airflow.api_fastapi.auth.managers.simple.simple_auth_manager.SimpleAuthManager
+    # The api-server fetches a task's log from `<hostname>:8793` on the scheduler pod (LocalExecutor). A Deployment's
+    # pod name has no DNS record, so the task records the pod's IP instead.
+    hostname_callable: airflow.utils.net.get_host_ip_address
+    simple_auth_manager_users: "lab-admin:admin"
+    simple_auth_manager_passwords_file: /opt/airflow/auth/passwords.json
+  scheduler:
+    standalone_dag_processor: "True"
+  api:
+    workers: 1
+# Environment, secrets and volumes of every component.
+secret:
+  - {envName: AIRFLOW_CONN_LAB_S3, secretName: airflow-s3-connection, secretKey: AIRFLOW_CONN_LAB_S3}
+volumes:
+  - name: lab-ca
+    configMap: {name: lab-ca-bundle}          # trust-manager's copy of the lab CA (ca.crt)
+volumeMounts:
+  - {name: lab-ca, mountPath: /etc/lab-ca, readOnly: true}
+# With LocalExecutor the scheduler runs the tasks, and the chart turns it into a StatefulSet with a 100 Gi
+# log volume when worker persistence is on (the default). Task logs stay on an emptyDir; the lab keeps no history.
+workers:
+  persistence: {enabled: false}
+  celery: {persistence: {enabled: false}}
+dagProcessor:
+  enabled: true
+  replicas: 1
+  # The prefix ends in `/`: the bundle lists it as a directory and downloads every object under it.
+  # `lab up` puts a marker object under dags/ and projects/ so the prefix exists before any DAG does.
+  dagBundleConfigList:
+    - name: lab-s3-dags
+      classpath: airflow.providers.amazon.aws.bundles.s3.S3DagBundle
+      kwargs:
+        aws_conn_id: lab_s3
+        bucket_name: lab-airflow
+        prefix: dags/
+        refresh_interval: 30
+  resources:
+    requests: {cpu: 100m, memory: 384Mi}
+    limits: {cpu: "1", memory: 512Mi}
+  logGroomerSidecar:
+    enabled: false
+apiServer:
+  replicas: 1
+  resources:
+    requests: {cpu: 100m, memory: 384Mi}
+    limits: {cpu: "1", memory: 640Mi}
+  # SimpleAuthManager opens its passwords file read-write (`a+`, `r+`), and a Secret volume is read-only:
+  # copy the file from the Secret into an emptyDir before the server starts.
+  extraInitContainers:
+    - name: simple-auth-passwords
+      image: '{{ template "airflow_image" . }}'
+      imagePullPolicy: Never
+      command: [cp, /opt/lab/auth-secret/passwords.json, /opt/airflow/auth/passwords.json]
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities: {drop: [ALL]}
+      resources:
+        requests: {cpu: 10m, memory: 16Mi}
+        limits: {cpu: 100m, memory: 64Mi}
+      volumeMounts:
+        - {name: simple-auth-secret, mountPath: /opt/lab/auth-secret, readOnly: true}
+        - {name: simple-auth, mountPath: /opt/airflow/auth}
+  extraVolumes:
+    - name: simple-auth-secret
+      secret: {secretName: airflow-simple-auth, items: [{key: passwords.json, path: passwords.json}]}
+    - {name: simple-auth, emptyDir: {sizeLimit: 1Mi}}
+  extraVolumeMounts:
+    - {name: simple-auth, mountPath: /opt/airflow/auth}
+# `fluid apply` runs here (LocalExecutor): the operator settings fluid-host would have.
+#   FLUID_PROJECT_DIR     the product checkout, filled from s3://lab-airflow/projects/ by the sidecar below
+#   FLUID_SPARK_*         the lab's spark-submit and spark-defaults (ConfigMap lab-spark in this
+#                         namespace, a copy `lab up` makes of the spark tier's files; optional)
+#   AWS_ENDPOINT_URL_S3   SeaweedFS, with the lab CA for every client library
+#   DBT_PROFILES_DIR      the dbt-trino profile (`fluid`, target `local`)
+# The generated DAG starts fluid with `env -i` and passes only FLUID_*, AWS_*, DBT_* (and PATH, HOME,
+# SSL_CERT_FILE, REQUESTS_CA_BUNDLE ...), forge's PASSTHROUGH_PREFIXES and PASSTHROUGH_NAMES.
+scheduler:
+  replicas: 1
+  resources:
+    requests: {cpu: 250m, memory: 640Mi}
+    limits: {cpu: "1", memory: 1024Mi}   # 1.5 Gi did not fit the footprint target of the combined tiers; the live run measures it
+  logGroomerSidecar:
+    enabled: false
+  env:
+    - {name: FLUID_PROJECT_DIR, value: /opt/fluid/projects}
+    - {name: FLUID_SPARK_SUBMIT_EXECUTABLE, value: /spark/lab-spark-submit}
+    - {name: FLUID_SPARK_SUBMIT_PROPERTIES_FILE, value: /spark/spark-defaults.conf}
+    - {name: FLUID_SPARK_LOCAL_ROOT, value: /opt/fluid/spark}
+    - {name: AWS_ENDPOINT_URL_S3, value: "https://s3.lab.test"}
+    - {name: AWS_REGION, value: us-east-1}
+    - {name: AWS_CA_BUNDLE, value: /etc/lab-ca/ca.crt}
+    - {name: SSL_CERT_FILE, value: /etc/lab-ca/ca.crt}
+    - {name: REQUESTS_CA_BUNDLE, value: /etc/lab-ca/ca.crt}
+    - {name: DBT_PROFILES_DIR, value: /opt/lab/dbt}
+  extraVolumes:
+    - {name: fluid-projects, emptyDir: {sizeLimit: 512Mi}}
+    - {name: fluid-spark, emptyDir: {sizeLimit: 512Mi}}
+    - {name: lab-airflow-files, configMap: {name: lab-airflow-files}}
+    - name: lab-spark
+      configMap: {name: lab-spark, optional: true, defaultMode: 365}   # 365 is 0555: lab-spark-submit must execute
+  extraVolumeMounts:
+    - {name: fluid-projects, mountPath: /opt/fluid/projects}
+    - {name: fluid-spark, mountPath: /opt/fluid/spark}
+    - {name: lab-airflow-files, mountPath: /opt/lab/dbt/profiles.yml, subPath: profiles.yml, readOnly: true}
+    - {name: lab-spark, mountPath: /spark, readOnly: true}
+  # Projects sync: the same image and connection, read-only, one process.
+  extraContainers:
+    - name: sync-projects
+      image: '{{ template "airflow_image" . }}'
+      imagePullPolicy: Never
+      command: [python3, /opt/lab/sync/sync_projects.py]
+      env:
+        - {name: FLUID_PROJECT_DIR, value: /opt/fluid/projects}
+        - {name: SYNC_BUCKET, value: lab-airflow}
+        - {name: SYNC_PREFIX, value: projects/}
+        - name: AIRFLOW_CONN_LAB_S3
+          valueFrom: {secretKeyRef: {name: airflow-s3-connection, key: AIRFLOW_CONN_LAB_S3}}
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities: {drop: [ALL]}
+      resources:
+        requests: {cpu: 20m, memory: 96Mi}
+        limits: {cpu: 200m, memory: 128Mi}
+      volumeMounts:
+        - {name: fluid-projects, mountPath: /opt/fluid/projects}
+        - {name: lab-ca, mountPath: /etc/lab-ca, readOnly: true}
+        - {name: lab-airflow-files, mountPath: /opt/lab/sync/sync_projects.py, subPath: sync_projects.py, readOnly: true}
+migrateDatabaseJob:
+  enabled: true
+  useHelmHooks: false
+  resources:
+    requests: {cpu: 100m, memory: 256Mi}
+    limits: {cpu: "1", memory: 384Mi}

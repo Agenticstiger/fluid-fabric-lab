@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# PLANTED (redpandadata/* image). L0 selftest: the denylist gate must FAIL.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: broker
+  namespace: fixture
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: broker}
+  template:
+    metadata:
+      labels: {app: broker}
+    spec:
+      containers:
+        - name: main
+          image: "docker.io/redpandadata/redpanda:v25.1.1@sha256:3f79bb7b435b05321651daefd374cdc681dc06faa65e374e38337b88ca046dea"

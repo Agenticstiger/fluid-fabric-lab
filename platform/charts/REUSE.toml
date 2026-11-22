@@ -1,0 +1,93 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# REUSE annotations for the vendored chart cache. Every archive and upstream
+# file here is third-party and unmodified; licences were read from the text
+# (chart LICENSE where present, otherwise the source repository's LICENSE at
+# the pinned commit, copied to upstream-licenses/). See versions.lock.yaml.
+version = 1
+
+[[annotations]]
+path = ["cert-manager-v1.21.2.tgz", "cert-manager-v1.21.2.tgz.prov", "trust-manager-v0.25.0.tgz", "upstream-licenses/cert-manager-v1.21.2.LICENSE", "upstream-licenses/trust-manager-v0.25.0.LICENSE"]
+SPDX-FileCopyrightText = "The cert-manager Authors"
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = ["gateway-helm-v1.9.2.tgz", "upstream-licenses/gateway-helm-v1.9.2.LICENSE"]
+SPDX-FileCopyrightText = "Envoy Gateway Authors"
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = ["cloudnative-pg-0.29.1.tgz", "cloudnative-pg-0.29.1.tgz.prov"]
+SPDX-FileCopyrightText = "The CloudNativePG Contributors"
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = ["seaweedfs-4.48.0.tgz", "upstream-licenses/seaweedfs-4.48.0.LICENSE"]
+SPDX-FileCopyrightText = "2025 Chris Lu and the SeaweedFS contributors"
+SPDX-License-Identifier = "Apache-2.0"
+
+# Lakekeeper chart packaged from main@cffd5b74 with its vendored dependencies:
+# groundhog2k postgres 1.6.4 (MIT) and openfga 0.3.10 (Apache-2.0, which itself
+# vendors Bitnami postgresql/mysql/common, Apache-2.0).
+[[annotations]]
+path = ["lakekeeper-0.12.0+main.cffd5b74.tgz"]
+SPDX-FileCopyrightText = ["2025 Vakamo Inc. and the Lakekeeper contributors", "2020 groundhog2k", "OpenFGA Authors", "Broadcom Inc. and/or its subsidiaries (Bitnami)"]
+SPDX-License-Identifier = "Apache-2.0 AND MIT"
+
+[[annotations]]
+path = ["upstream-licenses/lakekeeper-0.12.0+main.cffd5b74.LICENSE"]
+SPDX-FileCopyrightText = "2025 Vakamo Inc. and the Lakekeeper contributors"
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = ["upstream-licenses/postgres-1.6.4.LICENSE"]
+SPDX-FileCopyrightText = "2020 groundhog2k"
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = ["openfga-0.3.15.tgz", "upstream-licenses/openfga-0.3.15.LICENSE", "upstream-licenses/openfga-0.3.10.LICENSE"]
+SPDX-FileCopyrightText = ["OpenFGA Authors", "Broadcom Inc. and/or its subsidiaries (Bitnami)"]
+SPDX-License-Identifier = "Apache-2.0"
+
+# The file carries its own tag spelled "APACHE-2.0" (not a valid SPDX id).
+[[annotations]]
+path = ["upstream-licenses/bitnami-charts.LICENSE"]
+precedence = "override"
+SPDX-FileCopyrightText = "2025 Broadcom Inc. and/or its subsidiaries"
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = ["keycloak-operator/crds/**", "keycloak-operator/upstream/**"]
+SPDX-FileCopyrightText = "Red Hat, Inc. and the Keycloak contributors"
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = ["trino-1.44.0.tgz", "upstream-licenses/trino-1.44.0.LICENSE"]
+SPDX-FileCopyrightText = "The Trino Authors"
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = ["strimzi-kafka-operator-helm-3-chart-1.2.0.tgz", "upstream-licenses/strimzi-kafka-operator-1.2.0.LICENSE"]
+SPDX-FileCopyrightText = "Strimzi authors"
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = ["airflow-1.22.0.tgz", "airflow-1.22.0.tgz.prov"]
+SPDX-FileCopyrightText = ["2016-2026 The Apache Software Foundation", "2022 Bitnami"]
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = ["kafka-ui-1.6.5.tgz", "upstream-licenses/kafka-ui-1.6.5.LICENSE"]
+SPDX-FileCopyrightText = "Kafbat contributors"
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = ["superset-0.22.8.tgz", "upstream-licenses/superset-0.22.8.LICENSE"]
+SPDX-FileCopyrightText = ["The Apache Software Foundation", "Broadcom Inc. and/or its subsidiaries (Bitnami)"]
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = ["SHA256SUMS"]
+SPDX-FileCopyrightText = "2026 Agentics Transformation Limited"
+SPDX-License-Identifier = "Apache-2.0"

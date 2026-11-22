@@ -1,0 +1,14 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# PLANTED: the lab runs (use: used) a pgsty/silo image. The denylist gate must FAIL.
+lock_version: 1
+images:
+  - id: silo
+    use: used
+    ref: "docker.io/pgsty/silo:1.0.0"
+    digest: "sha256:8254c329a92850f6d539dd376f4816ee2764517da5e0235514af433164480d7a"
+  - id: ok
+    use: used
+    ref: "quay.io/example/tool:1.2.3"
+    digest: "sha256:aaa9402664f1a41f40ebbc52c9993eb66aeb366602958fdfaa283b71e64db123"

@@ -1,0 +1,3 @@
+# PLANTED: a values file with no SPDX header. reuse_lint must FAIL.
+servers:
+  replicas: 1

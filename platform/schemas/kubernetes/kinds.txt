@@ -1,0 +1,41 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# Kubernetes built-in kinds whose JSON schemas are vendored for offline
+# kubeconform runs, as "<apiVersion> <Kind>". The first block is the union of
+# kinds rendered by every chart in platform/charts (defaults plus the toggles
+# the lab uses, 2026-10-14). The second block is kinds the lab's own
+# manifests are expected to need. Add a kind here, then run ../regenerate.sh.
+# CustomResourceDefinition is listed but has NO upstream schema in
+# yannh/kubernetes-json-schema (the repo omits apiextensions.k8s.io/v1
+# CustomResourceDefinition); regenerate.sh records it in MISSING.txt and the
+# schema check must treat it as an explicit, reviewed exception.
+admissionregistration.k8s.io/v1 MutatingWebhookConfiguration
+admissionregistration.k8s.io/v1 ValidatingAdmissionPolicy
+admissionregistration.k8s.io/v1 ValidatingAdmissionPolicyBinding
+admissionregistration.k8s.io/v1 ValidatingWebhookConfiguration
+apiextensions.k8s.io/v1 CustomResourceDefinition
+apps/v1 Deployment
+apps/v1 StatefulSet
+batch/v1 Job
+networking.k8s.io/v1 NetworkPolicy
+policy/v1 PodDisruptionBudget
+rbac.authorization.k8s.io/v1 ClusterRole
+rbac.authorization.k8s.io/v1 ClusterRoleBinding
+rbac.authorization.k8s.io/v1 Role
+rbac.authorization.k8s.io/v1 RoleBinding
+v1 ConfigMap
+v1 Pod
+v1 Secret
+v1 Service
+v1 ServiceAccount
+
+apps/v1 DaemonSet
+autoscaling/v2 HorizontalPodAutoscaler
+batch/v1 CronJob
+scheduling.k8s.io/v1 PriorityClass
+storage.k8s.io/v1 StorageClass
+v1 LimitRange
+v1 Namespace
+v1 PersistentVolumeClaim
+v1 ResourceQuota

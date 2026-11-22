@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+# A ledger with stagesRun true may hold `passed` (with evidence) and other pending codes. profile_schema must PASS.
+schemaVersion: 1
+site: fx-run
+jurisdiction: lab
+tiers:
+  default: core
+  supported:
+    core: {expectations: expected/core.yaml}
+endpoints:
+  icebergRest:
+    catalogKind: rest
+    uri: https://catalog.fx.test/catalog
+    warehouses: {sales: sales-wh}
+  trino: {host: trino.fx.test, port: 443, auth: {method: jwt}}
+  oidc:
+    issuer: https://idp.fx.test/realms/fx
+    clientId: fx-client
+    credential: {env: FLUID_OIDC_CLIENT_SECRET}
+  connect:
+    sales: {api: strimzi.io/v1, namespace: sales, strimzi: {crClusterLabel: sales-connect}}
+  kubernetes: {inCluster: true}
+  publish: {defaultTarget: null}
+facts:
+  catalog.auth: oauth2
+  streaming.connector_api: strimzi.io/v1
+  kubernetes.api: present

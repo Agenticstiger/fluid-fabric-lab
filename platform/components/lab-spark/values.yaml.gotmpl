@@ -1,0 +1,156 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# The spark add-on tier's objects in namespace `spark`: the service account
+# the smoke Jobs run as, one ConfigMap with the tier's spark-defaults lines,
+# the smoke run's files and lab-spark-submit's, and `fluid-host`. The files
+# live in platform/spark/ and are read here, so each stays a real file in the
+# repository. They must not contain template braces: lab-objects renders every
+# object through `tpl`.
+#
+# fluid-host is the machine where `fluid apply --env local` runs
+# (docs/spark-tier.md). It runs the fluid-runner image `lab build` recorded, so
+# `lab up` passes its tag in LAB_FLUID_RUNNER_IMAGE; with no record (no build
+# yet) it is not rendered.
+#
+# The Spark pods run the spark-iceberg image `lab build` recorded
+# (lab.local/spark-iceberg:<tag>); `lab up` passes it in LAB_SPARK_IMAGE. An
+# offline render sets neither, so the image is empty and fluid-host is not
+# rendered either (it needs both builds); the ConfigMap's `spark-image` is empty.
+{{- $runner := env "LAB_FLUID_RUNNER_IMAGE" }}
+{{- $image := env "LAB_SPARK_IMAGE" }}
+{{- if and $image (not (regexMatch "^lab\\.local/spark-iceberg:[A-Za-z0-9_.-]{1,128}$" $image)) }}
+{{-   fail (printf "LAB_SPARK_IMAGE=%s is not a lab-built spark-iceberg image (lab.local/spark-iceberg:<tag>)" $image) }}
+{{- end }}
+objects:
+  10-serviceaccount:
+    apiVersion: v1
+    kind: ServiceAccount
+    metadata: {name: spark}
+    automountServiceAccountToken: false
+  20-files:
+    apiVersion: v1
+    kind: ConfigMap
+    metadata: {name: lab-spark}
+    data:
+{{- range $f := list "probe.fluid.yaml" "probe.overlay.local.yaml" "seed.py" "verify.py" "lab-spark-submit" "lab-spark-entry.sh" }}
+      {{ $f }}: |
+{{ readFile (printf "../../spark/%s" $f) | indent 8 }}
+{{- end }}
+      # The tier's properties file, under the one key forge's FLUID_SPARK_SUBMIT_PROPERTIES_FILE and the pods read.
+      spark-defaults.conf: |
+{{ readFile "../../spark/spark-defaults.apache.conf" | indent 8 }}
+      # lab-spark-submit reads the image here (read-only mount), not from its environment: the recorded
+      # spark-iceberg tag ("" until built).
+      spark-image: {{ $image | quote }}
+{{- if and $runner $image }}
+  30-fluid-host-serviceaccount:
+    apiVersion: v1
+    kind: ServiceAccount
+    metadata: {name: fluid-host}
+    automountServiceAccountToken: true
+  31-fluid-host-role:
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: Role
+    metadata: {name: fluid-host}
+    rules:
+      - apiGroups: [""]
+        resources: [pods]
+        verbs: [create, get, list, delete]   # list: the sweep of an earlier run of a build; get: its own pod, for the ownerReference
+      - apiGroups: [""]
+        resources: [pods/log]
+        verbs: [get]
+  32-fluid-host-rolebinding:
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: RoleBinding
+    metadata: {name: fluid-host}
+    roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: fluid-host}
+    subjects:
+      - {kind: ServiceAccount, name: fluid-host, namespace: spark}
+  33-fluid-host-state:
+    apiVersion: v1
+    kind: PersistentVolumeClaim
+    metadata: {name: fluid-host-state}
+    spec:
+      accessModes: [ReadWriteOnce]
+      resources: {requests: {storage: 1Gi}}
+  34-fluid-host:
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata: {name: fluid-host}
+    spec:
+      replicas: 1
+      strategy: {type: Recreate}   # one ReadWriteOnce volume
+      selector: {matchLabels: {app.kubernetes.io/name: fluid-host}}
+      template:
+        metadata: {labels: {app.kubernetes.io/name: fluid-host}}
+        spec:
+          serviceAccountName: fluid-host
+          # PID 1 of the pod is then the pause container, which reaps orphans: `sleep` as PID 1 would not,
+          # and forge's supervisors and spark-submit wrappers leave children behind.
+          shareProcessNamespace: true
+          automountServiceAccountToken: true   # lab-spark-submit calls the Kubernetes API with it
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            fsGroup: 10001
+            seccompProfile: {type: RuntimeDefault}
+          volumes:
+            - name: spark
+              configMap: {name: lab-spark, defaultMode: 0555}
+            - name: state
+              persistentVolumeClaim: {claimName: fluid-host-state}
+            - name: lab-ca
+              configMap: {name: lab-ca-bundle}
+          containers:
+            - name: fluid-host
+              image: {{ $runner | quote }}
+              imagePullPolicy: Never
+              "command": [sleep, infinity]   # quoted: the static render check reads a bare `command:` as a hook
+              workingDir: /state
+              securityContext:
+                runAsUser: 10001
+                runAsGroup: 10001
+                allowPrivilegeEscalation: false
+                capabilities: {drop: [ALL]}
+              env:
+                - {name: FLUID_SPARK_SUBMIT_EXECUTABLE, value: /opt/lab-spark/lab-spark-submit}
+                - {name: FLUID_SPARK_SUBMIT_PROPERTIES_FILE, value: /opt/lab-spark/spark-defaults.conf}
+                - {name: FLUID_SPARK_LOCAL_ROOT, value: "s3://lab-spark-artifacts/runs"}
+                - {name: AWS_ENDPOINT_URL_S3, value: "https://s3.lab.test"}
+                - {name: AWS_REGION, value: us-east-1}
+                - {name: AWS_CA_BUNDLE, value: /etc/lab-ca/ca.crt}
+                - {name: SSL_CERT_FILE, value: /etc/lab-ca/ca.crt}
+                - {name: REQUESTS_CA_BUNDLE, value: /etc/lab-ca/ca.crt}
+                - {name: LAB_SPARK_IMAGE, value: {{ $image | quote }}}
+                - name: AWS_ACCESS_KEY_ID
+                  valueFrom: {secretKeyRef: {name: spark-artifacts-s3, key: AWS_ACCESS_KEY_ID}}
+                - name: AWS_SECRET_ACCESS_KEY
+                  valueFrom: {secretKeyRef: {name: spark-artifacts-s3, key: AWS_SECRET_ACCESS_KEY}}
+                # What the lab, as the operator, lets forge run for the probe contract
+                # (labctl.spark.OPERATOR_ALLOWLISTS; a test keeps the two equal).
+                - {name: FLUID_SPARK_CONTRACT_SQL_ALLOWLIST, value: "lab.spark-probe/daily-curated@sha256:ae9257b9cb832a81eb1dc1f99af1253ca02f21cddc0892f1b7a7c602a0a16563"}
+                - {name: FLUID_SPARK_LOCAL_NAMESPACE_ALLOWLIST, value: "sales-wh/raw,sales-wh/curated"}
+              volumeMounts:
+                - {name: spark, mountPath: /opt/lab-spark, readOnly: true}
+                - {name: state, mountPath: /state}
+                - {name: lab-ca, mountPath: /etc/lab-ca, readOnly: true}
+              resources:
+                requests: {cpu: 50m, memory: 256Mi}
+                limits: {memory: 1Gi}
+{{- end }}
+  # `lab-dbt` is a stdlib wrapper meant for forge's DBT_EXECUTABLE: it gets a
+  # token for the pipeline identity and execs dbt (docs/trino-auth.md). Mount
+  # this ConfigMap with defaultMode 0755. profiles.yml carries dbt's own
+  # braces, which lab-objects would render, so each is written as a template
+  # string that renders back to the same two characters.
+  30-dbt:
+    apiVersion: v1
+    kind: ConfigMap
+    metadata: {name: lab-dbt}
+    data:
+      lab-dbt: |
+{{ readFile "../../dbt/lab-dbt" | indent 8 }}
+      profiles.yml: |
+{{ readFile "../../dbt/profiles.yml" | replace "{{" "{{ `{{` }}" | indent 8 }}

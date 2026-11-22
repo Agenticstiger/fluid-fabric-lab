@@ -1,0 +1,288 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# L0: the offline checks every pull request and every push to main must pass
+# docs/ci.md explains the design.
+#
+# Each matrix leg is one job: install the tools it needs at the versions in
+# versions.lock.yaml (sha256-verified), then run ONE check inside a network
+# namespace that has only a loopback interface. The leg first proves the
+# isolation (the same probes succeed outside the namespace and fail inside),
+# then drops root with no_new_privs, so the check cannot leave the namespace.
+#
+# Actions are pinned to full commit SHAs, resolved on 2026-10-14 with
+# `gh api repos/<owner>/<repo>/commits/<tag> --jq .sha`; the tag is in the
+# trailing comment, which Dependabot (.github/dependabot.yml) keeps in step.
+
+name: L0
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  # Manual re-run for a merge commit that got no run (GITHUB_TOKEN merges do
+  # not trigger workflows).
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: l0-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  l0:
+    name: ${{ matrix.check }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: ${{ matrix.timeout || 20 }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # `gate` runs `python3 tools/l0/<gate>.py`; `run` runs a command.
+        # `tools` are installed from versions.lock.yaml (yq always is).
+        # `python` defaults to 3.10, the lab's declared floor.
+        # The selftest leg also checks that every gate `./lab l0 --list`
+        # discovers has a `gate` leg here, so a new gate cannot skip CI.
+        include:
+          - {check: render, gate: render, tools: helm helmfile}
+          - {check: schema, gate: schema, tools: helm helmfile kubeconform}
+          - {check: licence, gate: licence, tools: trivy reuse}
+          - {check: denylist, gate: denylist, tools: helm helmfile}
+          - {check: brand, gate: brand_fence, tools: ""}
+          - {check: reuse, gate: reuse_lint, tools: reuse}
+          - {check: chart-app, gate: chart_app, tools: helm helmfile}
+          - {check: footprint, gate: footprint, tools: helm helmfile}
+          - {check: exposure, gate: exposure, tools: helm helmfile}
+          - {check: third-party, gate: third_party, tools: ""}
+          - {check: profile-schema, gate: profile_schema, tools: ""}
+          - {check: secrets, gate: secret_scan, tools: gitleaks, history: true}
+          - check: launcher-tests (3.10)
+            python: "3.10"
+            run: python3 -m unittest discover -s tests/launcher -v
+            tools: opa   # tests/launcher runs `opa test` on the Trino policy; no launcher test calls helm
+          - check: launcher-tests (3.14)
+            python: "3.14"
+            run: python3 -m unittest discover -s tests/launcher -v
+            tools: opa
+          - check: policy (opa test)
+            run: opa test platform/policy/trino-lab -v
+            tools: opa
+          - check: selftest
+            run: python3 tools/l0/selftest
+            tools: helm helmfile kubeconform trivy reuse gitleaks
+            history: true
+            timeout: 30
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # Full history where gitleaks scans commits, not just the tree.
+          fetch-depth: ${{ matrix.history && '0' || '1' }}
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: ${{ matrix.python || '3.10' }}
+
+      - name: Install pinned tools (versions.lock.yaml, sha256-verified)
+        env:
+          TOOLS: ${{ matrix.tools }}
+          HELMFILE_UPGRADE_NOTICE_DISABLED: "1"
+          # yq reads versions.lock.yaml, so it is bootstrapped from these two
+          # values; the step then fails unless the lock's yq entry agrees.
+          YQ_VERSION: v4.54.1
+          YQ_SHA256: 8e34fc298390875de416e6a4afcb8cabeceb25d9aa8506c1a2f9353cf702ea5f
+          # reuse (versions.lock.yaml tools: reuse) and its runtime dependencies,
+          # hash-pinned. Resolved 2026-10-14 with
+          #   uv pip compile --generate-hashes --no-build --python-version 3.10
+          #     --python-platform x86_64-manylinux_2_39 --exclude-newer 2026-09-30
+          # over reuse 6.2.0's Requires-Dist plus the charset-normalizer extra,
+          # keeping only the files pip can pick on CPython 3.10, linux x86_64.
+          # reuse itself installs from its sdist: its only wheel needs glibc
+          # 2.41 and ubuntu-24.04 has 2.39. The sdist builds with poetry-core,
+          # hash-pinned below and used without build isolation.
+          REUSE_BUILD_REQUIREMENTS: |
+            poetry-core==2.5.0 --hash=sha256:98ee465b66f7e14bb9fbe68fb5e00d0cff184f036993ec94610ae4b5612f3add
+          REUSE_REQUIREMENTS: |
+            reuse[charset-normalizer]==6.2.0 --hash=sha256:4feae057a2334c9a513e6933cdb9be819d8b822f3b5b435a36138bd218897d23
+            attrs==26.1.0 --hash=sha256:c647aa4a12dfbad9333ca4e71fe62ddc36f4e63b2d260a37a8b83d2f043ac309
+            boolean-py==5.0 --hash=sha256:ef28a70bd43115208441b53a045d1549e2f0ec6e3d08a9d142cbc41c1938e8d9
+            charset-normalizer==3.5.1 --hash=sha256:96eefc178f8636b9c760c5829345307fd81cfae9ab1e80997dbddeb0f54ee9a3 --hash=sha256:a6dac12ff6b846103483683f60c5f8fee205121adc58ffd87e90a90a3af69e99 --hash=sha256:6df0ec430f9a831772c23ca5a224cba36517a58a84bb32c32bb59a9fa67c47f6
+            click==8.5.0 --hash=sha256:255bc9599cf7748b4b1a446ccc735421bd08a2ae529a8b88597d3de5664ee360
+            jinja2==3.1.6 --hash=sha256:85ece4451f492d0c13c5dd7c13a64681a86afae63a5f347908daf103ce6d2f67
+            license-expression==30.4.4 --hash=sha256:421788fdcadb41f049d2dc934ce666626265aeccefddd25e162a26f23bcbf8a4
+            markupsafe==3.0.3 --hash=sha256:f42d0984e947b8adf7dd6dde396e720934d12c506ce84eea8476409563607591
+            python-debian==1.1.1 --hash=sha256:f98ae013e8e5310e49041cc3860a7105df73af73d4ff1d8afb474770d328a6ad
+            python-magic==0.4.27 --hash=sha256:c212960ad306f700aa0d01e5d7a325d20548ff97eb9920dcd29513174f0294d3
+            tomlkit==0.15.1 --hash=sha256:177a05aece5a8ca5266fd3c448abb47b8d352f09d477d3ca8332db4d89b24304
+        run: |
+          set -euo pipefail
+          die() { echo "::error title=tool install::$*"; exit 1; }
+          root="$RUNNER_TEMP/lab-tools"
+          bin="$root/bin"
+          dl="$root/dl"
+          mkdir -p "$bin" "$dl"
+          get() { curl --proto '=https' --tlsv1.2 -fsSL --retry 3 --retry-all-errors -o "$2" "$1"; }
+
+          # 1. yq, from the bootstrap pin, then checked against the lock.
+          get "https://github.com/mikefarah/yq/releases/download/$YQ_VERSION/yq_linux_amd64" "$dl/yq_linux_amd64"
+          echo "$YQ_SHA256  $dl/yq_linux_amd64" | sha256sum --check --strict -
+          install -m 0755 "$dl/yq_linux_amd64" "$bin/yq"
+          lock_q() { "$bin/yq" -e ".tools[] | select(.name == \"$1\") | $2" versions.lock.yaml; }
+          lock_yq_version=$(lock_q yq .version)
+          lock_yq_sha=$(lock_q yq .linux_amd64.sha256)
+          [ "$lock_yq_version" = "$YQ_VERSION" ] && [ "$lock_yq_sha" = "$YQ_SHA256" ] \
+            || die "yq bootstrap pin ($YQ_VERSION $YQ_SHA256) differs from versions.lock.yaml ($lock_yq_version $lock_yq_sha); change both together"
+
+          # 2. A release binary: URL and sha256 come from the lock. The download
+          #    must match the lock's sha256, and the upstream checksum file must
+          #    list that same sha256 for that file.
+          install_release() {
+            local name=$1 version file sha sums
+            version=$(lock_q "$name" .version)
+            file=$(lock_q "$name" .linux_amd64.file)
+            sha=$(lock_q "$name" .linux_amd64.sha256)
+            sums=$(lock_q "$name" .checksum_url)
+            [[ $sha =~ ^[0-9a-f]{64}$ ]] || die "$name: lock sha256 '$sha' is not 64 lowercase hex digits"
+            case $sums in
+              https://github.com/*/releases/download/"$version"/* | https://get.helm.sh/*) ;;
+              *) die "$name: checksum_url $sums is not a GitHub release asset of $version or get.helm.sh" ;;
+            esac
+            get "${sums%/*}/$file" "$dl/$file"
+            echo "$sha  $dl/$file" | sha256sum --check --strict -
+            get "$sums" "$dl/$file.upstream-sums"
+            awk -v f="$file" -v s="$sha" 'index($0, f) && index(tolower($0), s) {ok = 1} END {exit !ok}' \
+              "$dl/$file.upstream-sums" \
+              || die "$name: $sums does not list $sha for $file; the lock and the release disagree"
+            case $file in
+              *.tar.gz | *.tgz)
+                mkdir -p "$dl/$name.x"
+                tar -xzf "$dl/$file" -C "$dl/$name.x"
+                mapfile -t found < <(find "$dl/$name.x" -type f -name "$name")
+                [ "${#found[@]}" -eq 1 ] || die "$name: expected one '$name' binary in $file, found ${#found[@]}"
+                install -m 0755 "${found[0]}" "$bin/$name"
+                ;;
+              *) install -m 0755 "$dl/$file" "$bin/$name" ;;
+            esac
+          }
+
+          # 3. reuse (PyPI): versions.lock.yaml records the sdist sha256, which
+          #    must be the hash pinned in REUSE_REQUIREMENTS above.
+          install_reuse() {
+            local version sdist venv
+            version=$(lock_q reuse .version)
+            sdist=$(lock_q reuse .sdist.sha256)
+            grep -qF -- "reuse[charset-normalizer]==$version --hash=sha256:$sdist" <<<"$REUSE_REQUIREMENTS" \
+              || die "reuse: REUSE_REQUIREMENTS does not pin $version with the lock's sdist sha256"
+            python3 -I -c 'import sys; sys.exit(sys.version_info[:2] != (3, 10))' \
+              || die "reuse: the hashes in REUSE_REQUIREMENTS are for CPython 3.10; this leg runs $(python3 -V)"
+            venv="$root/reuse-venv"
+            python3 -m venv "$venv"
+            printf '%s' "$REUSE_BUILD_REQUIREMENTS" > "$dl/reuse-build.txt"
+            printf '%s' "$REUSE_REQUIREMENTS" > "$dl/reuse.txt"
+            "$venv/bin/python" -m pip install --disable-pip-version-check --no-input \
+              --require-hashes --only-binary=:all: --no-deps -r "$dl/reuse-build.txt"
+            # Order matters: --only-binary=:all: first, then the reuse exception.
+            "$venv/bin/python" -m pip install --disable-pip-version-check --no-input \
+              --require-hashes --no-build-isolation \
+              --only-binary=:all: --no-binary=reuse -r "$dl/reuse.txt"
+            ln -sf "$venv/bin/reuse" "$bin/reuse"
+          }
+
+          version_of() {
+            case $1 in
+              helm) "$bin/helm" version --short ;;
+              helmfile) "$bin/helmfile" version -o short ;;
+              kubeconform) "$bin/kubeconform" -v ;;
+              gitleaks) "$bin/gitleaks" version ;;
+              opa) "$bin/opa" version ;;
+              trivy) "$bin/trivy" --version ;;
+              crane) "$bin/crane" version ;;
+              yq) "$bin/yq" --version ;;
+              reuse) "$bin/reuse" --version ;;
+              *) die "$1: no version command known" ;;
+            esac
+          }
+          check_version() {
+            local name=$1 want got
+            want=$(lock_q "$name" .version)
+            got=$(version_of "$name" 2>&1) || die "$name: version command failed: $got"
+            grep -qF -- "${want#v}" <<<"$got" || die "$name reports '$got'; versions.lock.yaml pins $want"
+            echo "$name $want: installed and verified"
+          }
+
+          check_version yq
+          for tool in $TOOLS; do
+            case $tool in
+              yq) ;;
+              reuse) install_reuse ;;
+              *) install_release "$tool" ;;
+            esac
+            check_version "$tool"
+          done
+          echo "$bin" >> "$GITHUB_PATH"
+
+      - name: Every L0 gate has a job in this workflow
+        if: matrix.check == 'selftest'
+        run: |
+          set -euo pipefail
+          lab=$(./lab l0 --list --json | python3 -I -c 'import json, sys; print(" ".join(sorted(json.load(sys.stdin)["gates"])))')
+          ci=$(yq -r '[.jobs.l0.strategy.matrix.include[] | select(has("gate")) | .gate] | sort | join(" ")' .github/workflows/l0.yml)
+          echo "lab l0 --list: $lab"
+          echo "l0.yml legs:   $ci"
+          [ -n "$lab" ] && [ "$lab" = "$ci" ] \
+            || { echo "::error title=gate coverage::./lab l0 discovers [$lab] but .github/workflows/l0.yml has legs for [$ci]"; exit 1; }
+
+      - name: Run the check with the network removed
+        env:
+          GATE: ${{ matrix.gate }}
+          RUN: ${{ matrix.run }}
+          # Runs as root inside `unshare --net`, before the check starts.
+          ISOLATE: |
+            set -euo pipefail
+            uid=$1 gid=$2 user=$3 path=$4 home=$5 root=$6 ip4=$7 cmd=$8
+            fail() { echo "::error title=network isolation::$*"; exit 1; }
+            ip link set lo up
+            up=""
+            while read -r name _; do [ "$name" = lo ] || up="$up $name"; done < <(ip -brief link show up)
+            [ -z "$up" ] || fail "interfaces other than lo are up:$up"
+            if ip route get "$ip4" >/dev/null 2>&1; then fail "a route to $ip4 exists"; fi
+            if ip -6 route get 2001:4860:4860::8888 >/dev/null 2>&1; then fail "an IPv6 route out exists"; fi
+            if timeout 10 bash -c "exec 3<>/dev/tcp/$ip4/443" 2>/dev/null; then fail "TCP to $ip4:443 connected"; fi
+            if timeout 20 curl -sS -o /dev/null --max-time 10 https://github.com 2>/dev/null; then fail "HTTPS to github.com succeeded"; fi
+            echo "Isolated: only lo is up, no IPv4 or IPv6 route, TCP to $ip4:443 and HTTPS to github.com fail."
+            cd "$root"
+            # Back to the runner's uid with no supplementary groups (so no
+            # container-daemon socket) and no_new_privs (so no sudo back to
+            # root, and no way out of the namespace). Proxies point at a closed
+            # loopback port, exactly as `./lab l0` sets them.
+            exec setpriv --reuid="$uid" --regid="$gid" --clear-groups --no-new-privs -- \
+              env -i PATH="$path" HOME="$home" USER="$user" LOGNAME="$user" LANG=C.UTF-8 CI=true \
+                LAB_ROOT="$root" LAB_OFFLINE=1 \
+                HTTP_PROXY=http://127.0.0.1:9 HTTPS_PROXY=http://127.0.0.1:9 ALL_PROXY=http://127.0.0.1:9 \
+                http_proxy=http://127.0.0.1:9 https_proxy=http://127.0.0.1:9 all_proxy=http://127.0.0.1:9 \
+                NO_PROXY= no_proxy= \
+                bash -euo pipefail -c "$cmd"
+        run: |
+          set -euo pipefail
+          if [ -n "$GATE" ]; then cmd="python3 tools/l0/$GATE.py"; else cmd="$RUN"; fi
+          [ -n "$cmd" ] || { echo "::error::this matrix leg has neither gate nor run"; exit 1; }
+          # Positive control: the probes used inside the namespace succeed here,
+          # so their failure there proves isolation, not a broken probe.
+          ip4=$(getent ahostsv4 github.com | awk 'NR == 1 {print $1}' || true)
+          [ -n "$ip4" ] || { echo "::error::positive control: github.com does not resolve on the runner"; exit 1; }
+          timeout 10 bash -c "exec 3<>/dev/tcp/$ip4/443" \
+            || { echo "::error::positive control: no TCP to $ip4:443 on the runner"; exit 1; }
+          curl -sS -o /dev/null --max-time 10 https://github.com \
+            || { echo "::error::positive control: no HTTPS to github.com on the runner"; exit 1; }
+          echo "Positive control: TCP to $ip4:443 and HTTPS to github.com work outside the namespace."
+          echo "Running offline: $cmd"
+          sudo unshare --net -- bash -c "$ISOLATE" isolate \
+            "$(id -u)" "$(id -g)" "$(id -un)" "$PATH" "$HOME" "$GITHUB_WORKSPACE" "$ip4" "$cmd"

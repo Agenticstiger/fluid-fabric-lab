@@ -1,0 +1,11 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# PLANTED (NodePort Service). L0 selftest: the exposure gate must FAIL.
+apiVersion: v1
+kind: Service
+metadata: {name: exposed, namespace: fixture}
+spec:
+  type: NodePort
+  selector: {app: exposed}
+  ports: [{port: 80, nodePort: 30080}]

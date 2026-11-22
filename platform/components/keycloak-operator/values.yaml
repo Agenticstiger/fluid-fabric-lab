@@ -1,0 +1,14 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# Keycloak Operator 26.8.0 (local wrapper chart platform/charts/keycloak-operator).
+# Both images (operator, and the Keycloak server image the operator deploys)
+# are injected by digest from versions.lock.yaml by the Helmfile.
+# The operator "does not manage the database": the Keycloak CR (keycloak
+# release) points at the lab CNPG cluster.
+operator:
+  imagePullPolicy: IfNotPresent
+  # Explicit; upstream default is 450Mi/300m request.
+  resources:
+    requests: {cpu: 100m, memory: 256Mi}
+    limits: {cpu: 700m, memory: 320Mi}

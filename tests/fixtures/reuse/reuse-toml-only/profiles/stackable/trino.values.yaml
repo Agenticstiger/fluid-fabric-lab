@@ -1,0 +1,3 @@
+# PLANTED: licensed only through REUSE.toml, not its own header. reuse_lint must FAIL.
+servers:
+  replicas: 1

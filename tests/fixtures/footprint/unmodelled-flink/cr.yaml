@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+# PLANTED: a FlinkDeployment (an operator CR outside the modelled groups). footprint must FAIL.
+apiVersion: flink.apache.org/v1beta1
+kind: FlinkDeployment
+metadata: {name: flink, namespace: fixture}
+spec:
+  image: "quay.io/example/tool:1.2.3@sha256:0000000000000000000000000000000000000000000000000000000000000001"
+  taskManager:
+    replicas: 8
+    resource: {memory: 32g, cpu: 4}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: small, namespace: fixture}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: small}}
+  template:
+    metadata: {labels: {app: small}}
+    spec:
+      containers:
+        - name: main
+          image: "quay.io/example/tool:1.2.3@sha256:0000000000000000000000000000000000000000000000000000000000000001"
+          resources:
+            limits: {memory: 128Mi}

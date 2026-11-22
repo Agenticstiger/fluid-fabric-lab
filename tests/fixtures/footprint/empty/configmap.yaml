@@ -1,0 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+# PLANTED: no workload at all. An empty render is not a footprint: must FAIL.
+apiVersion: v1
+kind: ConfigMap
+metadata: {name: nothing, namespace: fixture}
+data: {a: b}

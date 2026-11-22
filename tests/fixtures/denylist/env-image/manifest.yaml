@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# PLANTED (denied image passed to an operator through an env var). L0 selftest: the denylist gate must FAIL.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: operator
+  namespace: fixture
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: operator}
+  template:
+    metadata:
+      labels: {app: operator}
+    spec:
+      containers:
+        - name: main
+          image: "quay.io/example/operator:1.0.0@sha256:de7d1b721a1e0632b7cf04edf5032c8ecffa9f9a08492152b926f1a5a7e765d7"
+          env:
+            - {name: RELATED_IMAGE_POSTGRES, value: "docker.io/bitnamilegacy/postgresql:15.4.0@sha256:189f40034be7a199f1fa9891668ee3ab6049f82d38c68be70f596eab2e1857b7"}

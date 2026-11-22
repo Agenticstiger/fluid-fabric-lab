@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+# PLANTED: a misspelt fact key (catalog.authn). profile_schema must FAIL.
+schemaVersion: 1
+profile: fx-typo
+tier: core
+stagesRun: false
+runners: [cli]
+products:
+  batch-demo:
+    summary: "Batch fixture product for the L0 selftest."
+    domains: [sales]
+    runners:
+      cli:
+        bundle: {status: pending, reasonCode: not_run, reason: "Fixture cell for the L0 selftest."}
+        validate: {status: pending, reasonCode: not_run, reason: "Fixture cell for the L0 selftest."}
+        generate-artifacts: {status: pending, reasonCode: not_run, reason: "Fixture cell for the L0 selftest."}
+        validate-artifacts: {status: pending, reasonCode: not_run, reason: "Fixture cell for the L0 selftest."}
+        diff: {status: pending, reasonCode: not_run, reason: "Fixture cell for the L0 selftest."}
+        plan: {status: pending, reasonCode: not_run, reason: "Fixture cell for the L0 selftest."}
+        apply: {status: pending, reasonCode: not_run, reason: "Fixture cell for the L0 selftest."}
+        policy-apply: {status: pending, reasonCode: not_run, reason: "Fixture cell for the L0 selftest."}
+        verify: {status: pending, reasonCode: not_run, reason: "Fixture cell for the L0 selftest."}
+        publish: {status: pending, reasonCode: not_run, reason: "Fixture cell for the L0 selftest."}
+        schedule-sync: {status: pending, reasonCode: not_run, reason: "Fixture cell for the L0 selftest."}

@@ -1,0 +1,6 @@
+# SPDX-FileCopyrightText: Example operator authors
+# SPDX-License-Identifier: OSL-3.0
+#
+# PLANTED: a post-renderer patch copied from rendered OSL templates (a derivative work).
+spec:
+  clusterConfig: {}

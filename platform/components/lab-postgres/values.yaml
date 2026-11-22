@@ -1,0 +1,61 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# One CNPG cluster (PostgreSQL 17.11), one database and owner role per
+# service: Lakekeeper, OpenFGA, Keycloak, Airflow, plus the OpenTofu `pg`
+# state database. Role passwords come from Secrets named
+# lab-pg-<role> (keys username/password) that `lab up` writes from
+# OpenBao; nothing here holds a secret value. Consumers in other namespaces get
+# their own copy of the matching Secret (labctl/credentials.py).
+#
+# Service endpoint for every consumer: lab-pg-rw.lab-db.svc:5432 (TLS: CNPG's
+# own server CA; clients verify against it).
+objects:
+  10-cluster:
+    apiVersion: postgresql.cnpg.io/v1
+    kind: Cluster
+    metadata: {name: lab-pg}
+    spec:
+      instances: 1
+      imageName: '{{ .Values.images.postgresql }}'
+      enableSuperuserAccess: false
+      storage: {size: 5Gi}
+      resources:
+        requests: {cpu: 100m, memory: 256Mi}
+        limits: {cpu: "1", memory: 384Mi}
+      postgresql:
+        parameters:
+          shared_buffers: 64MB
+          max_connections: "100"
+          effective_cache_size: 192MB
+      bootstrap:
+        initdb:
+          database: lakekeeper
+          owner: lakekeeper
+          secret: {name: lab-pg-lakekeeper}
+      managed:
+        roles:
+          - {name: openfga, ensure: present, login: true, passwordSecret: {name: lab-pg-openfga}}
+          - {name: keycloak, ensure: present, login: true, passwordSecret: {name: lab-pg-keycloak}}
+          - {name: airflow, ensure: present, login: true, passwordSecret: {name: lab-pg-airflow}}
+          - {name: tofu, ensure: present, login: true, passwordSecret: {name: lab-pg-tofu}}
+  20-db-openfga:
+    apiVersion: postgresql.cnpg.io/v1
+    kind: Database
+    metadata: {name: lab-pg-openfga}
+    spec: {name: openfga, owner: openfga, cluster: {name: lab-pg}, ensure: present}
+  21-db-keycloak:
+    apiVersion: postgresql.cnpg.io/v1
+    kind: Database
+    metadata: {name: lab-pg-keycloak}
+    spec: {name: keycloak, owner: keycloak, cluster: {name: lab-pg}, ensure: present}
+  22-db-airflow:
+    apiVersion: postgresql.cnpg.io/v1
+    kind: Database
+    metadata: {name: lab-pg-airflow}
+    spec: {name: airflow, owner: airflow, cluster: {name: lab-pg}, ensure: present}
+  23-db-tofu:
+    apiVersion: postgresql.cnpg.io/v1
+    kind: Database
+    metadata: {name: lab-pg-tofu}
+    spec: {name: tofu_state, owner: tofu, cluster: {name: lab-pg}, ensure: present}

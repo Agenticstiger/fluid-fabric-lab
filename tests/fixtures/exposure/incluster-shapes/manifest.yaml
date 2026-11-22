@@ -1,0 +1,49 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# PLANTED (exposed Services that no Service object declares). L0 selftest:
+# the exposure gate must FAIL on each.
+apiVersion: kafka.strimzi.io/v1
+kind: Kafka
+metadata: {name: lab-kafka, namespace: kafka}
+spec:
+  kafka:
+    listeners:
+      - {name: plain, port: 9092, type: internal, tls: false}
+      - {name: external, port: 9094, type: nodeport, tls: false}
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata: {name: lab-pg, namespace: lab-db}
+spec:
+  instances: 1
+  managed:
+    services:
+      additional:
+        - selectorType: rw
+          serviceTemplate:
+            metadata: {name: lab-pg-public}
+            spec: {type: LoadBalancer}
+---
+apiVersion: v1
+kind: List
+metadata: {name: bundle}
+items:
+  - apiVersion: v1
+    kind: Service
+    metadata: {name: listed, namespace: fixture}
+    spec:
+      type: NodePort
+      ports: [{port: 80, nodePort: 30081}]
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata: {name: web, namespace: fixture}
+spec:
+  rules:
+    - host: web.example.test
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend: {service: {name: web, port: {number: 80}}}

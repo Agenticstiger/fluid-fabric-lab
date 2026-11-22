@@ -1,0 +1,18 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# lab-objects: renders the custom resources the lab owns (CNPG Cluster,
+# Keycloak CR, Strimzi Kafka/KafkaConnect, Gateway, cert-manager issuers)
+# from a values map, so each one is a Helmfile release with its own tier and
+# its images come from versions.lock.yaml instead of being hand-copied.
+#
+# Pattern borrowed from the "raw" chart family (bedag/raw, Apache-2.0,
+# https://github.com/bedag/helm-charts/tree/master/charts/raw): a values map of
+# Kubernetes objects passed through `tpl`. Re-written here in ~30 lines rather
+# than vendored, because a vendored copy would need network to fetch and a
+# licence entry for a chart we use one template of.
+apiVersion: v2
+name: lab-objects
+description: Lab-owned custom resources rendered from values (fluid-fabric-lab)
+type: application
+version: 0.0.0

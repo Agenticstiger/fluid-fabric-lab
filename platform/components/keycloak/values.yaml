@@ -1,0 +1,61 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# The lab's Keycloak (26.8.0) as a Keycloak CR managed by the operator.
+# Resources are EXPLICIT: the operator's default for the
+# server is requests 1700 MiB / limits 2 GiB, which alone would break the
+# core tier's 8 GiB target. The realm is the KeycloakRealmImport in
+# platform/identity/realm-import.yaml (a second values file of this release).
+#
+# One issuer URL for browsers and pods: https://keycloak.lab.test/realms/fluid
+# (through the lab Gateway). DB: the lab CNPG cluster, role/database keycloak,
+# credentials from Secret lab-pg-keycloak (written by `lab up`).
+objects:
+  10-tls:
+    apiVersion: cert-manager.io/v1
+    kind: Certificate
+    metadata: {name: keycloak-tls}
+    spec:
+      secretName: keycloak-tls
+      dnsNames:
+        - keycloak.lab.test
+        - keycloak-service.keycloak.svc
+        - keycloak-service.keycloak.svc.cluster.local
+      privateKey: {algorithm: ECDSA, size: 256}
+      issuerRef: {name: lab-ca, kind: ClusterIssuer, group: cert-manager.io}
+  20-keycloak:
+    apiVersion: k8s.keycloak.org/v2beta1
+    kind: Keycloak
+    metadata: {name: keycloak}
+    spec:
+      instances: 1
+      image: '{{ .Values.images.keycloak }}'
+      # With a custom image reference (ours is pinned by digest) the operator
+      # defaults to `start --optimized`, which needs a pre-built server; the
+      # upstream image is not one, so the first start fails without this.
+      startOptimized: false
+      resources:
+        requests: {cpu: 250m, memory: 768Mi}
+        limits: {cpu: "1", memory: 1Gi}
+      db:
+        vendor: postgres
+        host: lab-pg-rw.lab-db.svc
+        port: 5432
+        database: keycloak
+        usernameSecret: {name: lab-pg-keycloak, key: username}
+        passwordSecret: {name: lab-pg-keycloak, key: password}
+        poolMaxSize: 10
+      http:
+        tlsSecret: keycloak-tls
+      hostname:
+        hostname: https://keycloak.lab.test
+        backchannelDynamic: false
+      proxy:
+        headers: xforwarded
+      ingress:
+        enabled: false        # exposed through the lab Gateway instead
+      features:
+        disabled: []
+      additionalOptions:
+        - {name: metrics-enabled, value: "false"}
+        - {name: health-enabled, value: "true"}

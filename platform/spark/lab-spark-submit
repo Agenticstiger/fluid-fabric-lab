@@ -1,0 +1,517 @@
+#!/usr/bin/env python3
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+"""lab-spark-submit: forge's `spark-submit` as one Kubernetes Pod on the tier's Spark image.
+
+forge's `parameters.spark.runtime: local` calls the operator's
+FLUID_SPARK_SUBMIT_EXECUTABLE with a spark-submit argv, as a list, in a new
+session, its stdout and stderr captured as the driver log. In the lab that
+process lives in the `fluid-host` pod (fluid-runner image), which holds no
+Spark. So this script runs the job as a Pod built from the Spark image and
+created through the Kubernetes API, with the master left at `local[2]`. The
+image is the lab-built spark-iceberg image (lab.local/spark-iceberg:<tag>,
+imagePullPolicy Never), run as uid/gid 185/185, and is read from the read-only
+ConfigMap mount (/opt/lab-spark/spark-image):
+
+  1. create one Pod in namespace `spark` from that image (LAB_SPARK_IMAGE may only
+     repeat what the file says), which runs `lab-spark-entry.sh` with forge's argv
+     unchanged; the entry script runs the image's own spark-submit;
+  2. stream the Pod's log to stdout;
+  3. exit with the container's exit code.
+
+On SIGTERM, SIGINT or SIGHUP, and on every other way out, the Pod is deleted
+(exit 143, 130, 129). SIGKILL of this script cannot be caught, so three more
+things bound what it leaves behind:
+- the Pod has an ownerReference to the fluid-host Pod this script runs in
+  ($HOSTNAME), so Kubernetes' garbage collector deletes it with fluid-host;
+- a batch run (forge passes `--fluid-checkpoint` only for a stream) gets
+  `activeDeadlineSeconds` (6 h; LAB_SPARK_POD_DEADLINE_S, 0 for none);
+- at the start it deletes every other Pod of the same build (label
+  `fluid-fabric-lab/spark-build`, the 8-hex build key forge puts at the end of
+  `--name`), so two drivers never share a checkpoint.
+Every Pod carries the label `fluid-fabric-lab/spark-submit`:
+`kubectl -n spark get pods -l fluid-fabric-lab/spark-submit` finds it.
+
+The OAuth2 client secret and the build identity's S3 key reach the Pod only as
+`secretKeyRef` environment variables. This script never reads a secret: none is
+in the Pod spec, in argv or in a log.
+
+Borrowed, not vendored:
+- the Pod-per-job shape (driver Pod, labels, restricted security context,
+  deletion of the Pod when the submitter goes) from Apache Spark's Kubernetes
+  scheduler backend (Apache-2.0, resource-managers/kubernetes);
+- following a Pod's log until its container terminates, then reading the exit
+  code from `containerStatuses[].state.terminated`, and deleting the Pod in a
+  `finally`, from Apache Airflow's KubernetesPodOperator (Apache-2.0,
+  providers/cncf/kubernetes `utils/pod_manager.py` and `operators/pod.py`);
+- the in-cluster client (ServiceAccount token and CA from
+  /var/run/secrets/kubernetes.io/serviceaccount) from kubernetes-client/python
+  `config/incluster_config.py` (Apache-2.0), reduced to urllib.
+
+Standard library only: it runs in the fluid-runner image as is.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import re
+import secrets
+import signal
+import socket
+import ssl
+import sys
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+from typing import Optional
+
+NAMESPACE = "spark"
+CONTAINER = "spark"
+LABEL = "fluid-fabric-lab/spark-submit"
+HOST_LABEL = "fluid-fabric-lab/spark-host"
+BUILD_LABEL = "fluid-fabric-lab/spark-build"
+# uid and gid of `spark:spark` in the apache/spark image; labctl.spark.APACHE_UID, APACHE_GID
+UID, GID = 185, 185
+SA_DIR = "/var/run/secrets/kubernetes.io/serviceaccount"
+ENTRY = "/spark/lab-spark-entry.sh"
+PROPS = "/opt/lab-spark/spark-defaults.conf"      # the one properties file forge's merge_conf and the pod both read
+IMAGE_FILE = "/opt/lab-spark/spark-image"         # the Spark image, from the read-only ConfigMap mount
+# The only image the Pods may run: the one `lab build spark-iceberg` loaded into the node.
+IMAGE_SHAPE = re.compile(r"^lab\.local/spark-iceberg:[A-Za-z0-9_.-]{1,128}$")
+DEFAULT_DEADLINE_S = 6 * 3600
+SWEEP_WAIT_S = 60
+POLL_S = 2.0
+START_TIMEOUT_S = 900
+PULL_GRACE_S = 300
+EXIT_FAILED = 125                   # this script failed, or the Pod ended with no exit code (docker run's convention)
+STUCK = {"ErrImageNeverPull", "InvalidImageName", "CreateContainerConfigError", "CreateContainerError"}
+PULL_RETRY = {"ErrImagePull", "ImagePullBackOff"}
+SIGNALS = (signal.SIGTERM, signal.SIGINT, signal.SIGHUP)
+
+
+class SubmitError(Exception):
+    pass
+
+
+class Interrupted(BaseException):
+    """A termination signal. BaseException: no `except Exception` below may swallow it."""
+
+    def __init__(self, signum: int):
+        super().__init__(signum)
+        self.signum = signum
+
+
+def label_value(text: str, default: str = "unnamed") -> str:
+    """A valid label value from free text: [A-Za-z0-9._-], alphanumeric at both ends, at most 63."""
+    cleaned = re.sub(r"[^A-Za-z0-9._-]+", "-", text or "")[:63].strip("-_.")
+    return cleaned or default
+
+
+def app_name(argv: list) -> str:
+    """The value of spark-submit's first `--name`, or ""."""
+    for i, arg in enumerate(argv):
+        if arg == "--name" and i + 1 < len(argv):
+            return argv[i + 1]
+        if arg.startswith("--name="):
+            return arg.split("=", 1)[1]
+    return ""
+
+
+def build_key(name: str) -> str:
+    """forge's build key: the 8 hex characters ending `--name` (fluid_build.spark.names.run_name); else the name."""
+    found = re.search(r"-([0-9a-f]{8})$", name or "")
+    return found.group(1) if found else label_value(name)
+
+
+def _read(environ: dict, seam: str, default: str, what: str) -> str:
+    path = environ.get(seam) if environ.get("LAB_KUBE_API") else None   # test seam
+    try:
+        with open(path or default, encoding="utf-8") as handle:
+            return handle.read().strip()
+    except OSError as exc:
+        raise SubmitError(f"cannot read the Spark {what} from {path or default}: {exc.strerror}") from None
+
+
+def spark_image(environ: dict) -> str:
+    """The Spark image, from the read-only ConfigMap file; LAB_SPARK_IMAGE, when set, must say the same.
+
+    The file is the lab's value (a test compares it with the lock and the recorded build), so a shell in
+    fluid-host cannot point the wrapper at another image by setting an environment variable. The image must be
+    the lab-built one.
+    """
+    image = _read(environ, "LAB_SPARK_IMAGE_FILE", IMAGE_FILE, "image")
+    if not IMAGE_SHAPE.match(image):
+        raise SubmitError(f"{IMAGE_FILE} does not hold a lab-built image, lab.local/spark-iceberg:<tag>")
+    if environ.get("LAB_SPARK_IMAGE") not in (None, "", image):
+        raise SubmitError("LAB_SPARK_IMAGE differs from the image in the ConfigMap; refusing it")
+    return image
+
+
+def check_properties(argv: list) -> None:
+    """forge's `--properties-file` must be the lab's own file: merge_conf and the pod then read the same one."""
+    for i, arg in enumerate(argv):
+        given = None
+        if arg == "--properties-file":
+            given = argv[i + 1] if i + 1 < len(argv) else ""
+        elif arg.startswith("--properties-file="):
+            given = arg.split("=", 1)[1]
+        if given is not None and given != PROPS:
+            raise SubmitError(f"--properties-file {given!r} is not {PROPS}: FLUID_SPARK_SUBMIT_PROPERTIES_FILE "
+                              "must name the lab's file")
+
+
+def pod_name() -> str:
+    return f"lab-spark-submit-{secrets.token_hex(5)}"
+
+
+def pod_spec(name: str, image: str, argv: list, run: str, host: str, deadline_s: Optional[int] = None,
+             build: str = "", owner: Optional[dict] = None) -> dict:
+    """The Pod: restricted, no ServiceAccount token, no secret value.
+
+    The image is lab-built, loaded into the node and never pulled."""
+    uid, gid = UID, GID
+    secret = [{"name": k, "valueFrom": {"secretKeyRef": {"name": "spark-lakekeeper-client", "key": k}}}
+              for k in ("LAKEKEEPER_CLIENT_ID", "LAKEKEEPER_CLIENT_SECRET")]
+    s3 = [{"name": k, "valueFrom": {"secretKeyRef": {"name": "spark-build-s3", "key": k}}}
+          for k in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY")]
+    spec = {
+        "restartPolicy": "Never", "serviceAccountName": "spark", "automountServiceAccountToken": False,
+        "securityContext": {"runAsNonRoot": True, "runAsUser": uid, "runAsGroup": gid,
+                            "seccompProfile": {"type": "RuntimeDefault"}},
+        "volumes": [{"name": "spark", "configMap": {"name": "lab-spark"}},
+                    {"name": "work", "emptyDir": {"sizeLimit": "512Mi"}},
+                    {"name": "lab-ca", "configMap": {"name": "lab-ca-bundle"}}],
+        "containers": [{
+            "name": CONTAINER, "image": image, "imagePullPolicy": "Never",
+            # Kubernetes expands $(VAR) and $$ in args: escape every $ so forge's argv arrives byte for byte.
+            "command": ["bash", ENTRY], "args": [a.replace("$", "$$") for a in argv],
+            "env": secret + s3 + [
+                {"name": "AWS_REGION", "value": "us-east-1"},
+                # Trust only the lab CA in every JVM in the pod.
+                {"name": "JAVA_TOOL_OPTIONS", "value": "-Djavax.net.ssl.trustStore=/etc/lab-ca/truststore.p12"
+                                                      " -Djavax.net.ssl.trustStoreType=PKCS12"}],
+            "securityContext": {"runAsUser": uid, "runAsGroup": gid, "allowPrivilegeEscalation": False,
+                                "capabilities": {"drop": ["ALL"]}},
+            "volumeMounts": [{"name": "spark", "mountPath": "/spark", "readOnly": True},
+                             {"name": "work", "mountPath": "/work"},
+                             {"name": "lab-ca", "mountPath": "/etc/lab-ca", "readOnly": True}],
+            "resources": {"requests": {"cpu": "500m", "memory": "2Gi"}, "limits": {"memory": "2560Mi"}},
+        }],
+    }
+    if deadline_s:
+        spec["activeDeadlineSeconds"] = deadline_s
+    meta = {"name": name, "namespace": NAMESPACE,
+            "labels": {"app.kubernetes.io/part-of": "fluid-fabric-lab",
+                       "app.kubernetes.io/managed-by": "lab-spark-submit",
+                       LABEL: run, HOST_LABEL: host, BUILD_LABEL: build or run}}
+    if owner:
+        meta["ownerReferences"] = [{"apiVersion": "v1", "kind": "Pod", "name": owner["name"], "uid": owner["uid"]}]
+    return {"apiVersion": "v1", "kind": "Pod", "metadata": meta, "spec": spec}
+
+
+class Api:
+    """The Kubernetes API of the cluster this Pod runs in, over urllib.
+
+    LAB_KUBE_API (a loopback http URL only) replaces the in-cluster address; the
+    tests use it to talk to a fake API.
+    """
+
+    def __init__(self, environ: dict):
+        override = environ.get("LAB_KUBE_API")
+        self.token_file = os.path.join(SA_DIR, "token")
+        self.ctx: Optional[ssl.SSLContext] = None
+        if override:
+            if not re.match(r"^http://(127\.0\.0\.1|localhost)(:\d+)?$", override):
+                raise SubmitError("LAB_KUBE_API must be a loopback http URL (it is a test seam)")
+            self.base, self.token_file = override, ""
+        else:
+            host, port = environ.get("KUBERNETES_SERVICE_HOST"), environ.get("KUBERNETES_SERVICE_PORT", "443")
+            if not host:
+                raise SubmitError("not in a cluster: KUBERNETES_SERVICE_HOST is unset")
+            self.base = f"https://{host if ':' not in host else '[' + host + ']'}:{port}"
+            self.ctx = ssl.create_default_context(cafile=os.path.join(SA_DIR, "ca.crt"))
+
+    def request(self, method: str, path: str, body: Optional[dict] = None, timeout: float = 30):
+        data = json.dumps(body).encode() if body is not None else None
+        req = urllib.request.Request(self.base + path, data=data, method=method)
+        req.add_header("Accept", "application/json")
+        if data is not None:
+            req.add_header("Content-Type", "application/json")
+        if self.token_file:
+            with open(self.token_file, encoding="utf-8") as handle:     # re-read: the token rotates
+                req.add_header("Authorization", "Bearer " + handle.read().strip())
+        return urllib.request.urlopen(req, timeout=timeout, context=self.ctx)
+
+    def json(self, method: str, path: str, body: Optional[dict] = None) -> Optional[dict]:
+        """The decoded answer; None for 404."""
+        try:
+            with self.request(method, path, body) as resp:
+                return json.loads(resp.read() or b"{}")
+        except urllib.error.HTTPError as exc:
+            detail = exc.read()[:300].decode("utf-8", "replace")
+            exc.close()
+            if exc.code == 404:
+                return None
+            raise SubmitError(f"{method} {path}: HTTP {exc.code} {detail}") from None
+        except (urllib.error.URLError, OSError) as exc:
+            raise SubmitError(f"{method} {path}: {exc}") from None
+
+
+def pods_path(name: str = "") -> str:
+    return f"/api/v1/namespaces/{NAMESPACE}/pods" + (f"/{name}" if name else "")
+
+
+def terminated(pod: dict) -> Optional[dict]:
+    """The spark container's `terminated` state, or None while it has not ended."""
+    for status in (pod.get("status") or {}).get("containerStatuses") or []:
+        if status.get("name") == CONTAINER:
+            return (status.get("state") or {}).get("terminated")
+    return None
+
+
+def blocked(pod: dict) -> Optional[tuple]:
+    """(reason, message) when the container waits for something only retrying or the operator can clear."""
+    for status in (pod.get("status") or {}).get("containerStatuses") or []:
+        waiting = (status.get("state") or {}).get("waiting") or {}
+        if waiting.get("reason") in STUCK | PULL_RETRY:
+            return waiting["reason"], str(waiting.get("message") or "")[:300]
+    return None
+
+
+def exit_code(pod: dict) -> int:
+    """The container's exit code; EXIT_FAILED when the Pod ended without one (evicted, deadline)."""
+    ended = terminated(pod)
+    if ended is not None and isinstance(ended.get("exitCode"), int):
+        return ended["exitCode"]
+    status = pod.get("status") or {}
+    sys.stderr.write(f"lab-spark-submit: pod ended {status.get('phase')} without an exit code: "
+                     f"{status.get('reason') or ''} {str(status.get('message') or '')[:200]}\n")
+    return EXIT_FAILED
+
+
+def wait_started(api: Api, name: str, poll_s: float, timeout_s: float) -> dict:
+    """Poll until the container runs or has ended; SubmitError when it cannot start."""
+    deadline, pulling_since = time.monotonic() + timeout_s, None
+    while True:
+        pod = api.json("GET", pods_path(name))
+        if pod is None:
+            raise SubmitError(f"pod {name} disappeared (deleted by someone else?)")
+        phase = (pod.get("status") or {}).get("phase")
+        if phase in ("Running", "Succeeded", "Failed"):
+            return pod
+        wait = blocked(pod)
+        if wait and wait[0] in STUCK:
+            raise SubmitError(f"pod {name} cannot start: {wait[0]}: {wait[1]}")
+        pulling_since = (pulling_since or time.monotonic()) if wait else None
+        if pulling_since and time.monotonic() - pulling_since >= PULL_GRACE_S:
+            raise SubmitError(f"pod {name} cannot pull its image after {PULL_GRACE_S} s: {wait[0]}: {wait[1]}")
+        if time.monotonic() > deadline:
+            raise SubmitError(f"pod {name} did not start within {timeout_s:.0f} s (phase {phase})")
+        time.sleep(poll_s)
+
+
+def ts_key(stamp: str) -> tuple:
+    """An RFC 3339 timestamp as an orderable pair: Kubernetes trims trailing zeros, so compare the fraction padded."""
+    head, _, frac = stamp.rstrip("Z").partition(".")
+    return head, frac.ljust(9, "0")
+
+
+class Log:
+    """The driver log as it reaches stdout: each line once, in order, across reopened streams.
+
+    The API server stamps every line (`timestamps=true`). A reopened stream asks `sinceTime` the last
+    stamp, which also returns the lines at that stamp again; those already written are skipped by
+    count. Resuming by time, not by byte offset, survives kubelet rotating the log file.
+    """
+
+    def __init__(self, out):
+        self.out = out
+        self.last = None            # the last stamp, as received
+        self.at_last = {}           # line -> times written with that stamp
+        self.pending = {}           # the same, still to be skipped on this stream
+
+    def reopen(self) -> None:
+        self.pending = dict(self.at_last)
+
+    def line(self, raw: bytes) -> None:
+        stamp, _, text = raw.partition(b" ")
+        try:
+            key = ts_key(stamp.decode("ascii"))
+        except UnicodeDecodeError:
+            key = None
+        if key is None or "T" not in key[0]:
+            text, key = raw, None          # no stamp: pass it through
+        elif self.last is not None:
+            before = ts_key(self.last)
+            if key < before:
+                return
+            if key == before and self.pending.get(text, 0) > 0:
+                self.pending[text] -= 1
+                return
+        if key is not None:
+            if self.last is None or key != ts_key(self.last):
+                self.at_last = {}
+            self.last = stamp.decode("ascii")
+            self.at_last[text] = self.at_last.get(text, 0) + 1
+        self.out.write(text + b"\n")
+        self.out.flush()
+
+
+def stream_log(api: Api, name: str, log: Log) -> None:
+    """Follow the container log into `log`. Ends when the container does, or when the API server or a proxy closes it.
+
+    The caller asks the Pod and reopens the stream in the second case.
+    """
+    path = pods_path(name) + f"/log?container={CONTAINER}&follow=true&timestamps=true"
+    if log.last:
+        path += "&sinceTime=" + urllib.parse.quote(log.last)
+    log.reopen()
+    buffered = b""
+    try:
+        with api.request("GET", path, timeout=120) as resp:
+            while True:
+                chunk = resp.read1(65536)
+                if not chunk:
+                    break
+                buffered += chunk
+                *lines, buffered = buffered.split(b"\n")
+                for raw in lines:
+                    log.line(raw)
+    except urllib.error.HTTPError as exc:
+        exc.close()                 # the container has not logged yet (400); the caller polls
+    except (urllib.error.URLError, OSError, socket.timeout):
+        pass                        # a refused connection or a cut stream; the caller polls
+    except Exception as exc:        # http.client errors (IncompleteRead) on a cut stream
+        sys.stderr.write(f"lab-spark-submit: log stream ended: {exc}\n")
+    if buffered:
+        log.line(buffered)
+
+
+def follow(api: Api, name: str, out, poll_s: float, start_timeout_s: float) -> int:
+    wait_started(api, name, poll_s, start_timeout_s)
+    log = Log(out)
+    while True:
+        stream_log(api, name, log)
+        pod = api.json("GET", pods_path(name))
+        if pod is None:
+            raise SubmitError(f"pod {name} disappeared while it ran")
+        if terminated(pod) is not None or (pod.get("status") or {}).get("phase") in ("Succeeded", "Failed"):
+            # The log can end a moment before the status says so; read what is left once.
+            stream_log(api, name, log)
+            return exit_code(pod)
+        time.sleep(poll_s)
+
+
+def own_pod(api: Api, environ: dict) -> dict:
+    """The ownerReference to the Pod this script runs in: Kubernetes deletes the Spark Pod when fluid-host goes."""
+    host = environ.get("HOSTNAME") or socket.gethostname()
+    found = api.json("GET", pods_path(host))
+    if not found or not (found.get("metadata") or {}).get("uid"):
+        raise SubmitError(f"cannot read its own pod {host} (needs get on pods): no ownerReference, so the Spark "
+                          "pod could outlive fluid-host")
+    return {"name": found["metadata"]["name"], "uid": found["metadata"]["uid"]}
+
+
+def sweep(api: Api, build: str, keep: str, poll_s: float) -> list:
+    """Delete every other Pod of this build, and wait until they are gone: two drivers never share a checkpoint."""
+    selector = urllib.parse.quote(f"{BUILD_LABEL}={build}", safe="=")
+    listing = api.json("GET", pods_path() + f"?labelSelector={selector}") or {}
+    old = [p["metadata"]["name"] for p in listing.get("items") or [] if p["metadata"]["name"] != keep]
+    for old_name in old:
+        sys.stderr.write(f"lab-spark-submit: deleting pod {old_name}, an earlier run of build {build}\n")
+        delete_pod(api, old_name)
+    deadline = time.monotonic() + SWEEP_WAIT_S
+    while old and time.monotonic() < deadline:
+        old = [n for n in old if api.json("GET", pods_path(n)) is not None]
+        if old:
+            time.sleep(poll_s)
+    if old:
+        raise SubmitError(f"earlier pod(s) {', '.join(old)} of build {build} are still there after {SWEEP_WAIT_S} s")
+    return old
+
+
+def delete_pod(api: Api, name: str) -> None:
+    """Delete the Pod, whatever state it is in; a Pod that is already gone is fine."""
+    try:
+        api.json("DELETE", pods_path(name), {"gracePeriodSeconds": 10, "propagationPolicy": "Background"})
+    except SubmitError as exc:
+        sys.stderr.write(f"lab-spark-submit: could not delete pod {name}: {exc}; "
+                         f"find it with `kubectl -n {NAMESPACE} get pods -l {LABEL}`\n")
+
+
+def run(argv: list, environ: dict, out=None) -> int:
+    out = out or sys.stdout.buffer
+    try:
+        image = spark_image(environ)
+        check_properties(argv)
+    except SubmitError as exc:
+        sys.stderr.write(f"lab-spark-submit: {exc}\n")
+        return EXIT_FAILED
+    poll_s = float(environ.get("LAB_SPARK_POLL_S", POLL_S))
+    start_timeout_s = float(environ.get("LAB_SPARK_START_TIMEOUT_S", START_TIMEOUT_S))
+    streaming = "--fluid-checkpoint" in argv          # forge passes it for a stream only
+    if environ.get("LAB_SPARK_POD_DEADLINE_S"):
+        deadline_s = int(environ["LAB_SPARK_POD_DEADLINE_S"]) or None
+    else:
+        deadline_s = None if streaming else DEFAULT_DEADLINE_S
+    name = pod_name()
+    run_name = app_name(argv)
+    code, api, got = EXIT_FAILED, None, {"sig": None}
+
+    def stop(signum, _frame):
+        if got["sig"] is None:              # the first signal is the only one that counts
+            got["sig"] = signum
+        try:
+            for sig in SIGNALS:
+                signal.signal(sig, signal.SIG_IGN)
+        except OSError:
+            pass                            # another signal arrived while this handler ran; it is ignored too
+        raise Interrupted(got["sig"])
+
+    previous = {sig: signal.signal(sig, stop) for sig in SIGNALS}
+    try:
+        try:
+            api = Api(environ)
+            owner = own_pod(api, environ)
+            build = build_key(run_name)
+            sweep(api, build, name, poll_s)
+            spec = pod_spec(name, image, argv, label_value(run_name),
+                            label_value(environ.get("HOSTNAME") or socket.gethostname(), "host"), deadline_s,
+                            build, owner)
+            if api.json("POST", pods_path(), spec) is None:
+                raise SubmitError(f"namespace {NAMESPACE} not found")
+            code = follow(api, name, out, poll_s, start_timeout_s)
+        except Interrupted:
+            pass
+        except SubmitError as exc:
+            sys.stderr.write(f"lab-spark-submit: {exc}\n")
+            code = EXIT_FAILED
+        finally:
+            # Cleanup must finish: a signal that lands before the ignore below, or inside the
+            # request, is absorbed and the delete is tried again.
+            done = False
+            while not done:
+                try:
+                    for sig in SIGNALS:
+                        signal.signal(sig, signal.SIG_IGN)
+                    if api is not None:
+                        delete_pod(api, name)
+                    done = True
+                except Interrupted:
+                    continue
+    except Interrupted:
+        pass                                 # a signal inside an except clause above; cleanup has run
+    finally:
+        for sig, handler in previous.items():
+            signal.signal(sig, handler)
+    return 128 + got["sig"] if got["sig"] else code
+
+
+def main() -> int:
+    return run(sys.argv[1:], dict(os.environ))
+
+
+if __name__ == "__main__":
+    sys.exit(main())

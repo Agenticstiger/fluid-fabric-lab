@@ -1,0 +1,33 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# cert-manager v1.21.2 (chart cert-manager-v1.21.2). Images are injected by
+# platform/helmfile.yaml.gotmpl from versions.lock.yaml (by digest); nothing
+# here names a tag. Resources are explicit (the L0 footprint
+# gate sums them). The lab CA itself lives in the lab-pki release.
+crds:
+  enabled: true       # CRDs are templates, so `helmfile template` renders them offline
+  keep: true
+replicaCount: 1
+prometheus:
+  enabled: false      # no Prometheus in the lab; avoids a ServiceMonitor CRD dependency
+enableCertificateOwnerRef: true
+resources:
+  requests: {cpu: 20m, memory: 64Mi}
+  limits: {cpu: 500m, memory: 96Mi}
+webhook:
+  replicaCount: 1
+  resources:
+    requests: {cpu: 10m, memory: 32Mi}
+    limits: {cpu: 250m, memory: 64Mi}
+cainjector:
+  enabled: true
+  replicaCount: 1
+  resources:
+    requests: {cpu: 10m, memory: 64Mi}
+    limits: {cpu: 250m, memory: 96Mi}
+startupapicheck:
+  enabled: true
+  resources:
+    requests: {cpu: 10m, memory: 32Mi}
+    limits: {cpu: 100m, memory: 64Mi}

@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# PLANTED (ilum/* image). L0 selftest: the denylist gate must FAIL.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ilum-core
+  namespace: fixture
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: ilum-core}
+  template:
+    metadata:
+      labels: {app: ilum-core}
+    spec:
+      containers:
+        - name: main
+          image: "docker.io/ilum/core:6.2.0@sha256:252f10c83610ebca1a059c0bae8255eba2f95be4d1d7bcfa89d7248a82d9f111"

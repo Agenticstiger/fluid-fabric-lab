@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# PLANTED REGRESSION (L0 selftest): restores the trinodb/charts 1.44.0
+# defaults the lab overrides - two workers and 8G heaps on the coordinator and
+# each worker (three 8G JVMs). The footprint floor must FAIL the core tier.
+server:
+  workers: 2
+coordinator:
+  jvm:
+    maxHeapSize: 8G
+    maxHeapPercent: null
+worker:
+  jvm:
+    maxHeapSize: 8G
+    maxHeapPercent: null

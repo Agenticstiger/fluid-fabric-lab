@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+# PLANTED: a credential VALUE instead of a reference. profile_schema must FAIL.
+schemaVersion: 1
+site: fx-secret
+jurisdiction: lab
+tiers:
+  default: core
+  supported:
+    core: {expectations: expected/core.yaml}
+endpoints:
+  icebergRest:
+    catalogKind: rest
+    uri: https://catalog.fx.test/catalog
+    warehouses: {sales: sales-wh}
+  trino: {host: trino.fx.test, port: 443, auth: {method: jwt}}
+  oidc:
+    issuer: https://idp.fx.test/realms/fx
+    clientId: fx-client
+    credential: {value: "not-a-real-secret-fixture"}
+  connect:
+    sales: {api: strimzi.io/v1, namespace: sales, strimzi: {crClusterLabel: sales-connect}}
+  kubernetes: {inCluster: true}
+  publish: {defaultTarget: null}
+facts:
+  catalog.auth: oauth2
+  streaming.connector_api: strimzi.io/v1
+  kubernetes.api: present

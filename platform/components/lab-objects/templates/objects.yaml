@@ -1,0 +1,28 @@
+{{- /*
+SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+SPDX-License-Identifier: Apache-2.0
+
+Every object must carry apiVersion, kind and metadata.name; anything else
+fails the render instead of producing a half-object.
+*/ -}}
+{{- range $key := keys .Values.objects | sortAlpha }}
+{{- $o := index $.Values.objects $key }}
+{{- if $o }}
+{{- $o = tpl (toYaml $o) $ | fromYaml }}
+{{- if hasKey $o "Error" }}{{ fail (printf "lab-objects: %s does not render to YAML: %s" $key $o.Error) }}{{ end }}
+{{- if not (and $o.apiVersion $o.kind $o.metadata $o.metadata.name) }}
+{{- fail (printf "lab-objects: %s needs apiVersion, kind and metadata.name" $key) }}
+{{- end }}
+{{- if and (not $o.metadata.namespace) (not (has $o.kind $.Values.clusterScopedKinds)) }}
+{{- $_ := set $o.metadata "namespace" $.Release.Namespace }}
+{{- end }}
+{{- $labels := $o.metadata.labels | default dict }}
+{{- $_ := set $labels "app.kubernetes.io/managed-by" $.Release.Service }}
+{{- $_ := set $labels "app.kubernetes.io/part-of" "fluid-fabric-lab" }}
+{{- $_ := set $labels "fluid-fabric-lab/release" $.Release.Name }}
+{{- $_ := set $o.metadata "labels" $labels }}
+---
+# Source: lab-objects/{{ $.Release.Name }}/{{ $key }}
+{{ toYaml $o }}
+{{- end }}
+{{- end }}

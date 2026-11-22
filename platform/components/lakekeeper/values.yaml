@@ -1,0 +1,101 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# Lakekeeper image v0.14.0 on chart 0.12.0 pinned to main@cffd5b74 (https://github.com/lakekeeper/lakekeeper-charts/pull/156).
+# The image is injected by digest from versions.lock.yaml.
+# Running 0.14 on this chart is unverified.
+#
+# REQUIRED overrides:
+#   lakekeeper.edition core   (`plus` switches to the licensed plus image,
+#                              which the image denylist rejects)
+#   authz.backend openfga     (allowall would let every request through; `lab
+#                              check` (g) proves a denied request)
+#   internalOpenFGA false     (the internal one pulls Bitnami postgresql 12.12.10
+#                              on quay.io/lakekeeper/postgresql:15.4.0-debian-11-r45
+#                              with allowInsecureImages: true)
+#   postgresql.enabled false  (groundhog2k postgres subchart; CNPG instead)
+lakekeeper:
+  edition: core
+  useLicenseSecret: false
+# The DB migration Job is a post-install hook unless helmWait is true. With
+# Helmfile's `wait: true` a hook deadlocks: Helm waits for the Deployment, whose
+# init container waits for the migrations the hook would run afterwards.
+helmWait: true
+catalog:
+  replicas: 1
+  image:
+    pullPolicy: IfNotPresent
+  resources:
+    requests: {cpu: 50m, memory: 96Mi}
+    limits: {cpu: 500m, memory: 192Mi}
+  dbMigrations:
+    enabled: true
+    resources:
+      requests: {cpu: 20m, memory: 64Mi}
+      limits: {cpu: 250m, memory: 128Mi}
+  initContainers:
+    checkDb:
+      resources:
+        requests: {cpu: 10m, memory: 32Mi}
+        limits: {cpu: 100m, memory: 64Mi}
+  extraEnv:
+    # OpenFGA pre-shared key (same Secret OpenFGA's authn reads). The chart only
+    # takes the key as a plain value, so it is wired here from a Secret instead.
+    - name: LAKEKEEPER__OPENFGA__API_KEY
+      valueFrom:
+        secretKeyRef: {name: openfga-preshared-keys, key: lakekeeper}
+    # Trust only the lab CA. Lakekeeper calls Keycloak (OIDC discovery and
+    # keys) and the S3 STS endpoint over HTTPS; its Rust clients read
+    # SSL_CERT_FILE (rustls native roots / platform verifier). Nothing else is
+    # reachable anyway: egress to the internet is denied.
+    - name: SSL_CERT_FILE
+      value: /etc/lab-ca/ca.crt
+  extraVolumeMounts:
+    - {name: lab-ca, mountPath: /etc/lab-ca, readOnly: true}
+  extraVolumes:
+    - name: lab-ca
+      configMap: {name: lab-ca-bundle, items: [{key: ca.crt, path: ca.crt}]}
+postgresql:
+  enabled: false
+internalOpenFGA: false
+externalDatabase:
+  type: postgres
+  host_read: lab-pg-rw.lab-db.svc
+  host_write: lab-pg-rw.lab-db.svc
+  port: 5432
+  database: lakekeeper
+  userSecret: lab-pg-lakekeeper        # copied from the CNPG role secret by `lab up`
+  userSecretKey: username
+  passwordSecret: lab-pg-lakekeeper
+  passwordSecretKey: password
+auth:
+  oauth2:
+    providerUri: https://keycloak.lab.test/realms/fluid
+    audience: lakekeeper
+  k8s:
+    enabled: false
+authz:
+  backend: openfga
+  openfga:
+    endpoint: http://openfga.openfga.svc:8081
+    store: lakekeeper
+# Warehouse storage credentials: Lakekeeper's Postgres secret store,
+# encrypted with a per-lab key that `lab up` generates into OpenBao
+# (kv/lab/credentials) and hands over as Secret lakekeeper-pg-encryption.
+#
+# The KV2 backend against OpenBao was tried first (`lab check` (e)) and
+# FAILED with Lakekeeper v0.14.0 and OpenBao 2.7.1 (2026-11-18): Lakekeeper's
+# Vault client (vaultrs) parses GET /v1/sys/health and requires the field
+# `performance_standby`, which OpenBao does not return, so the secrets health
+# check fails, /health answers 503 and the liveness probe restarts the pod.
+# Two chart findings came with it: chart 0.12.0 never sets
+# LAKEKEEPER__SECRET_BACKEND for type kv2 (Lakekeeper then silently stays on
+# Postgres), and `secretMount` is the KV v2 mount itself, not kv/data/<path>.
+# docs/proven.md records the evidence.
+secretBackend:
+  type: postgres
+  postgres:
+    encryptionKeySecret: lakekeeper-pg-encryption
+    encryptionKeySecretKey: encryptionKey
+OPABridge:
+  enabled: false   # Lakekeeper's own OPA bridge is a separate piece of policy work, not this sidecar

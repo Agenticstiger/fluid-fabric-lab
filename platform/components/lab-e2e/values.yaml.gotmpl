@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# The e2e tier's objects (docs/e2e.md): the Kafka topic the example product
+# products/stream-batch reads, and the read-back script `lab check --tier e2e`
+# runs on the spark tier's image. The release lives in namespace spark; the
+# topic names namespace kafka itself, where the Strimzi topic operator watches.
+#
+# The topic has no ACL, like lab-check.events: forge's Kafka source has no SCRAM
+# or mTLS (docs/streaming-tier.md), so the stream reads the plain listener, and
+# a resource with no ACL is open there. Records live one day.
+objects:
+  10-topic:
+    apiVersion: kafka.strimzi.io/v1
+    kind: KafkaTopic
+    metadata:
+      name: lab-e2e.events
+      namespace: kafka
+      labels: {strimzi.io/cluster: lab-kafka}
+    spec:
+      partitions: 1
+      replicas: 1
+      config: {retention.ms: "86400000"}
+  20-files:
+    apiVersion: v1
+    kind: ConfigMap
+    metadata: {name: lab-e2e}
+    data:
+      verify.py: |
+{{ readFile "../../e2e/verify.py" | indent 8 }}

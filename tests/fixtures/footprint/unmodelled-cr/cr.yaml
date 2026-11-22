@@ -1,0 +1,11 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+# PLANTED: a workload CR kind the footprint floor does not model. It must
+# FAIL rather than count it as zero.
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaStreamsCluster
+metadata:
+  name: x
+  namespace: kafka
+spec:
+  replicas: 3

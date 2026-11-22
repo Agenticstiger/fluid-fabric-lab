@@ -1,0 +1,11 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# PLANTED: an untagged image in a Strimzi KafkaConnect CR. Must FAIL.
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaConnect
+metadata: {name: connect, namespace: fixture}
+spec:
+  replicas: 1
+  bootstrapServers: lab-kafka-kafka-bootstrap:9093
+  image: quay.io/example/connect-iceberg

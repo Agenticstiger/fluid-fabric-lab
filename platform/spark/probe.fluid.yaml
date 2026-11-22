@@ -1,0 +1,77 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# The spark tier's probe contract: one Spark SQL batch over a seeded Iceberg
+# table, in the lab's Lakekeeper warehouse `sales-wh`. `lab check --tier spark`
+# seeds `raw.events` with a Job on the spark image, runs
+# `fluid apply --env local --mode amend-and-build --build-id daily-curated`
+# on this contract in fluid-host (forge's local Spark runtime, on the lab's
+# open image), and reads `curated.events_daily` back.
+#
+# The operator's allowlists for it (the SQL digest and the namespaces) are
+# labctl.spark.OPERATOR_ALLOWLISTS. A contract cannot list itself.
+fluidVersion: "0.7.7"
+kind: DataProduct
+id: lab.spark-probe
+name: Spark probe
+metadata:
+  owner:
+    team: data-platform
+environments:
+  local: {}
+builds:
+  - id: daily-curated
+    engine: spark
+    pattern: embedded-logic
+    outputs: [events_daily]
+    execution:
+      trigger:
+        type: schedule
+        schedule: "0 2 * * *"
+    properties:
+      sql: >-
+        SELECT CAST(event_time AS DATE) AS event_date, COUNT(*) AS events
+        FROM raw.events GROUP BY CAST(event_time AS DATE)
+      parameters:
+        spark:
+          runtime: local
+          mode: batch
+exposes:
+  - exposeId: events_raw
+    kind: table
+    binding:
+      platform: local
+      format: iceberg
+      location:
+        catalog: lakekeeper
+        uri: "https://lakekeeper.lab.test/catalog"
+        warehouse: sales-wh
+        database: raw
+        table: events
+    contract:
+      schema:
+        - name: event_id
+          type: string
+          required: true
+        - name: user_id
+          type: string
+        - name: event_time
+          type: timestamp_ltz(3)
+  - exposeId: events_daily
+    kind: table
+    binding:
+      platform: local
+      format: iceberg
+      location:
+        catalog: lakekeeper
+        uri: "https://lakekeeper.lab.test/catalog"
+        warehouse: sales-wh
+        database: curated
+        table: events_daily
+    contract:
+      schema:
+        - name: event_date
+          type: date
+          required: true
+        - name: events
+          type: bigint

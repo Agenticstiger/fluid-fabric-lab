@@ -1,0 +1,119 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# profiles/lab-kind/site.yaml - the reference site profile for the kind lab.
+# Schema: profiles/schema/site.schema.json. Field names may still change.
+#
+# What this file is
+#   Site FACTS, endpoints, identity NAMES and credential REFERENCES. It holds
+#   no secret values, names no distribution or platform as a capability key,
+#   and cannot make anything `passed`: only a stage's own verification can.
+#   A fact left out resolves to `unknown`, which fails under --strict.
+#
+# Nothing here has been probed. Every value is what the lab is BUILT to
+# provide; `lab check` confirms or refutes each.
+
+schemaVersion: 1
+site: agentics-lab-kind
+jurisdiction: lab
+
+tiers:
+  default: core
+  supported:
+    core: {expectations: expected/core.yaml}
+    streaming: {expectations: expected/streaming.yaml}
+    orchestration: {expectations: expected/orchestration.yaml}
+    full: {expectations: expected/full.yaml}
+
+endpoints:
+  icebergRest:
+    catalogKind: lakekeeper
+    uri: https://lakekeeper.lab.test/catalog
+    caBundle: /etc/fluid/lab-ca.pem
+    warehouses:
+      sales: sales-wh
+      hr: hr-wh
+  objectStore:
+    # Used only to write OPA bundles. Table data goes through
+    # catalog-vended credentials (facts.storage.credentials).
+    endpoint: https://s3.lab.test
+    region: us-east-1
+    pathStyle: true
+    caBundle: /etc/fluid/lab-ca.pem
+  trino:
+    host: trino.lab.test
+    port: 443
+    caBundle: /etc/fluid/lab-ca.pem
+    auth:
+      method: jwt            # OAuth2 for browsers; JWT for the CLI and dbt
+  oidc:
+    issuer: https://keycloak.lab.test/realms/fluid
+    clientId: fluid-apply-sales
+    credential: {env: FLUID_OIDC_CLIENT_SECRET}   # FLUID_ prefix survives the DAG's env -i allowlist
+    caBundle: /etc/fluid/lab-ca.pem
+  opaBundles:
+    transport: s3
+    prefix: s3://opa-bundles/sales/
+    signingKeyId: lab-opa-1
+    # OPA's S3 signer cannot reach a non-AWS STS, so OPA reads bundles with a
+    # static, read-only, bundle-prefix-only key. Reference only.
+    readCredential:
+      kubernetesSecret: {namespace: trino, name: opa-bundle-reader, key: secret-access-key}
+  groupLookup:
+    route: opa               # `opa`: lab Rego -> identity admin API (site glue)
+    endpoint: https://keycloak.lab.test/admin/realms/fluid
+  connect:
+    sales:
+      api: strimzi.io/v1
+      namespace: sales
+      restUrl: https://sales-connect-api.sales.svc:8083
+      strimzi: {crClusterLabel: sales-connect}
+    hr:
+      api: strimzi.io/v1
+      namespace: hr
+      restUrl: https://hr-connect-api.hr.svc:8083
+      strimzi: {crClusterLabel: hr-connect}
+  kubernetes: {inCluster: true}
+  kafka:
+    bootstrapServers: lab-kafka-kafka-bootstrap.kafka.svc:9092
+    auth: none
+  spark:
+    submitExecutable: /opt/lab-spark/lab-spark-submit
+    propertiesFile: /opt/lab-spark/spark-defaults.conf
+    artifactsRoot: s3://lab-spark-artifacts/runs
+    host: spark/fluid-host          # `lab accept` runs forge in this pod (the spark tier's fluid-host)
+  scheduler:
+    kind: airflow
+    dagsDestination: s3://lab-airflow/dags
+  keyService:
+    api: vault               # the Vault HTTP API, served by OpenBao beside the cluster
+    address: https://bao.lab.test:8200
+    caBundle: /etc/fluid/lab-ca.pem
+    authRole: fluid-runner
+  otlp:
+    endpoint: https://otel-collector.obs.svc:4317
+  publish:
+    defaultTarget: null      # no default publish target; CI always passes --target
+
+facts:
+  catalog.auth: oauth2
+  storage.credentials: vended
+  streaming.connector_api: strimzi.io/v1
+  trino.version: "483"
+  trino.opa.row_filters: configured
+  trino.opa.column_masks: configured
+  opa.bundle_transport: s3
+  opa.bundle_credentials: static_read_only
+  opa.configmap_labels: {}   # required only when opa.bundle_transport is configmap_lab
+  identity.trino_groups: opa
+  identity.client_provisioning: keycloak_admin
+  keys.state_encryption: openbao_transit
+  kubernetes.api: present
+
+substitutes:
+  - plane: object_store
+    standsInFor: "Ceph RGW (the L3 object store; proven only on the lab-ceph profile)"
+    reason: "SeaweedFS with STS keeps the core tier inside an 8 GiB VM; cells it touches are reported as substitute, never reference."
+  - plane: key_service
+    standsInFor: "the three-host Key Service"
+    reason: "A single OpenBao container beside the kind cluster (persistent Raft, TLS, transit keys) stands in for the production key service."

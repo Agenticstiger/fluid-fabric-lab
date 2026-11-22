@@ -1,0 +1,198 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# profiles/lab-kind/expected/full.yaml - expectations ledger, every add-on (stages also run through the generated Airflow DAG).
+# Schema: profiles/schema/expectations.schema.json.
+#
+# `lab accept` passes only if every observed status equals this ledger in both
+# directions: an unexpected `passed` fails like an unexpected `failed`.
+# Changing a cell needs a commit naming the capability change behind it.
+# While stagesRun is false nothing has run, so every cell is `pending` with
+# reasonCode not_run; the schema rejects anything else. Once stages have run,
+# set stagesRun to true and replace these cells with the real results.
+
+schemaVersion: 1
+profile: lab-kind
+tier: full
+stagesRun: false
+runners: [cli, dag]
+
+products:
+  # Expectations are set from the first real run.
+  batch-dbt-trino:
+    summary: "Batch dbt-trino model over Iceberg (unrestricted)."
+    domains: [sales]
+    runners:
+      cli:
+        bundle: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run."}
+        validate: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run."}
+        generate-artifacts: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run. Note: `fluid generate iac` on a kubernetes binding exits 1 (generate_iac_no_provider)."}
+        validate-artifacts: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run."}
+        diff: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run."}
+        plan: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run."}
+        apply: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run."}
+        policy-apply: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run. Note: on-prem governance lands at apply via OpenTofu; not_applicable is the expected status here."}
+        verify: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run."}
+        publish: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run. Note: no registrar by default; record whatever forge really reports."}
+        schedule-sync: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run. Note: needs the orchestration add-on to be meaningful."}
+      dag:
+        bundle: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run. Runner: generated Airflow DAG through its env allowlist."}
+        validate: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run. Runner: generated Airflow DAG through its env allowlist."}
+        generate-artifacts: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run. Note: `fluid generate iac` on a kubernetes binding exits 1 (generate_iac_no_provider). Runner: generated Airflow DAG through its env allowlist."}
+        validate-artifacts: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run. Runner: generated Airflow DAG through its env allowlist."}
+        diff: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run. Runner: generated Airflow DAG through its env allowlist."}
+        plan: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run. Runner: generated Airflow DAG through its env allowlist."}
+        apply: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run. Runner: generated Airflow DAG through its env allowlist."}
+        policy-apply: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run. Note: on-prem governance lands at apply via OpenTofu; not_applicable is the expected status here. Runner: generated Airflow DAG through its env allowlist."}
+        verify: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run. Runner: generated Airflow DAG through its env allowlist."}
+        publish: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run. Note: no registrar by default; record whatever forge really reports. Runner: generated Airflow DAG through its env allowlist."}
+        schedule-sync: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run. Note: needs the orchestration add-on to be meaningful. Runner: generated Airflow DAG through its env allowlist."}
+
+  # Connector stages depend on the PG-7 spike; cross-domain checks need both domains up.
+  streaming-kafka-iceberg:
+    summary: "Kafka topic to Iceberg through a v1 KafkaConnector, in two domains."
+    domains: [sales, hr]
+    runners:
+      cli:
+        bundle: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run."}
+        validate: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run."}
+        generate-artifacts: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run. Note: `fluid generate iac` on a kubernetes binding exits 1 (generate_iac_no_provider)."}
+        validate-artifacts: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run."}
+        diff: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run."}
+        plan: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run."}
+        apply: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run."}
+        policy-apply: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run. Note: on-prem governance lands at apply via OpenTofu; not_applicable is the expected status here."}
+        verify: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run."}
+        publish: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run. Note: no registrar by default; record whatever forge really reports."}
+        schedule-sync: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run. Note: needs the orchestration add-on to be meaningful."}
+      dag:
+        bundle: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run. Runner: generated Airflow DAG through its env allowlist."}
+        validate: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run. Runner: generated Airflow DAG through its env allowlist."}
+        generate-artifacts: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run. Note: `fluid generate iac` on a kubernetes binding exits 1 (generate_iac_no_provider). Runner: generated Airflow DAG through its env allowlist."}
+        validate-artifacts: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run. Runner: generated Airflow DAG through its env allowlist."}
+        diff: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run. Runner: generated Airflow DAG through its env allowlist."}
+        plan: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run. Runner: generated Airflow DAG through its env allowlist."}
+        apply: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run. Runner: generated Airflow DAG through its env allowlist."}
+        policy-apply: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run. Note: on-prem governance lands at apply via OpenTofu; not_applicable is the expected status here. Runner: generated Airflow DAG through its env allowlist."}
+        verify: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run. Runner: generated Airflow DAG through its env allowlist."}
+        publish: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run. Note: no registrar by default; record whatever forge really reports. Runner: generated Airflow DAG through its env allowlist."}
+        schedule-sync: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run. Note: needs the orchestration add-on to be meaningful. Runner: generated Airflow DAG through its env allowlist."}
+
+  # Starts at unsupported under --strict until policy.mask.last_four is implemented (it is not_implemented today).
+  restricted-rows-masks:
+    summary: "Restricted product with rowFilters and columnRestrictions enforced by Trino + OPA (Mode B)."
+    domains: [sales]
+    runners:
+      cli:
+        bundle: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run."}
+        validate: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run."}
+        generate-artifacts: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run. Note: `fluid generate iac` on a kubernetes binding exits 1 (generate_iac_no_provider)."}
+        validate-artifacts: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run."}
+        diff: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run."}
+        plan: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run."}
+        apply: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run."}
+        policy-apply: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run. Note: on-prem governance lands at apply via OpenTofu; not_applicable is the expected status here."}
+        verify: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run."}
+        publish: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run. Note: no registrar by default; record whatever forge really reports."}
+        schedule-sync: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run. Note: needs the orchestration add-on to be meaningful."}
+      dag:
+        bundle: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run. Runner: generated Airflow DAG through its env allowlist."}
+        validate: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run. Runner: generated Airflow DAG through its env allowlist."}
+        generate-artifacts: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run. Note: `fluid generate iac` on a kubernetes binding exits 1 (generate_iac_no_provider). Runner: generated Airflow DAG through its env allowlist."}
+        validate-artifacts: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run. Runner: generated Airflow DAG through its env allowlist."}
+        diff: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run. Runner: generated Airflow DAG through its env allowlist."}
+        plan: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run. Runner: generated Airflow DAG through its env allowlist."}
+        apply: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run. Runner: generated Airflow DAG through its env allowlist."}
+        policy-apply: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run. Note: on-prem governance lands at apply via OpenTofu; not_applicable is the expected status here. Runner: generated Airflow DAG through its env allowlist."}
+        verify: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run. Runner: generated Airflow DAG through its env allowlist."}
+        publish: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run. Note: no registrar by default; record whatever forge really reports. Runner: generated Airflow DAG through its env allowlist."}
+        schedule-sync: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run. Note: needs the orchestration add-on to be meaningful. Runner: generated Airflow DAG through its env allowlist."}
+
+  # Expected unsupported until PG-1 and PG-2 pass.
+  duckdb-vended-read:
+    summary: "DuckDB read of an unrestricted table through a vended-credential attach."
+    domains: [sales]
+    runners:
+      cli:
+        bundle: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run."}
+        validate: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run."}
+        generate-artifacts: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run. Note: `fluid generate iac` on a kubernetes binding exits 1 (generate_iac_no_provider)."}
+        validate-artifacts: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run."}
+        diff: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run."}
+        plan: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run."}
+        apply: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run."}
+        policy-apply: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run. Note: on-prem governance lands at apply via OpenTofu; not_applicable is the expected status here."}
+        verify: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run."}
+        publish: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run. Note: no registrar by default; record whatever forge really reports."}
+        schedule-sync: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run. Note: needs the orchestration add-on to be meaningful."}
+      dag:
+        bundle: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run. Runner: generated Airflow DAG through its env allowlist."}
+        validate: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run. Runner: generated Airflow DAG through its env allowlist."}
+        generate-artifacts: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run. Note: `fluid generate iac` on a kubernetes binding exits 1 (generate_iac_no_provider). Runner: generated Airflow DAG through its env allowlist."}
+        validate-artifacts: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run. Runner: generated Airflow DAG through its env allowlist."}
+        diff: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run. Runner: generated Airflow DAG through its env allowlist."}
+        plan: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run. Runner: generated Airflow DAG through its env allowlist."}
+        apply: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run. Runner: generated Airflow DAG through its env allowlist."}
+        policy-apply: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run. Note: on-prem governance lands at apply via OpenTofu; not_applicable is the expected status here. Runner: generated Airflow DAG through its env allowlist."}
+        verify: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run. Runner: generated Airflow DAG through its env allowlist."}
+        publish: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run. Note: no registrar by default; record whatever forge really reports. Runner: generated Airflow DAG through its env allowlist."}
+        schedule-sync: {status: pending, reasonCode: not_run, reason: "Product not authored yet, and no stage has run. Note: needs the orchestration add-on to be meaningful. Runner: generated Airflow DAG through its env allowlist."}
+
+  # The lab's own products: they exist, and no stage has run on the lab yet.
+  events-pipeline:
+    summary: "A raw Kafka stream, a daily Spark SQL batch and an hourly dbt model, one contract run with --env local on the lab."
+    domains: [lab]
+    runners:
+      cli:
+        bundle: {status: pending, reasonCode: not_run, reason: "No stage of products/events-pipeline has run through `lab accept` yet (the product exists)."}
+        validate: {status: pending, reasonCode: not_run, reason: "No stage of products/events-pipeline has run through `lab accept` yet (the product exists)."}
+        generate-artifacts: {status: pending, reasonCode: not_run, reason: "No stage of products/events-pipeline has run through `lab accept` yet (the product exists)."}
+        validate-artifacts: {status: pending, reasonCode: not_run, reason: "No stage of products/events-pipeline has run through `lab accept` yet (the product exists)."}
+        diff: {status: pending, reasonCode: not_run, reason: "No stage of products/events-pipeline has run through `lab accept` yet (the product exists)."}
+        plan: {status: pending, reasonCode: not_run, reason: "No stage of products/events-pipeline has run through `lab accept` yet (the product exists)."}
+        apply: {status: pending, reasonCode: not_run, reason: "No stage of products/events-pipeline has run through `lab accept` yet (the product exists)."}
+        policy-apply: {status: pending, reasonCode: not_run, reason: "No stage of products/events-pipeline has run through `lab accept` yet (the product exists)."}
+        verify: {status: pending, reasonCode: not_run, reason: "No stage of products/events-pipeline has run through `lab accept` yet (the product exists)."}
+        publish: {status: pending, reasonCode: not_run, reason: "No stage of products/events-pipeline has run through `lab accept` yet (the product exists)."}
+        schedule-sync: {status: pending, reasonCode: not_run, reason: "No stage of products/events-pipeline has run through `lab accept` yet (the product exists)."}
+      dag:
+        bundle: {status: pending, reasonCode: not_run, reason: "No stage of products/events-pipeline has run through `lab accept` yet (the product exists)."}
+        validate: {status: pending, reasonCode: not_run, reason: "No stage of products/events-pipeline has run through `lab accept` yet (the product exists)."}
+        generate-artifacts: {status: pending, reasonCode: not_run, reason: "No stage of products/events-pipeline has run through `lab accept` yet (the product exists)."}
+        validate-artifacts: {status: pending, reasonCode: not_run, reason: "No stage of products/events-pipeline has run through `lab accept` yet (the product exists)."}
+        diff: {status: pending, reasonCode: not_run, reason: "No stage of products/events-pipeline has run through `lab accept` yet (the product exists)."}
+        plan: {status: pending, reasonCode: not_run, reason: "No stage of products/events-pipeline has run through `lab accept` yet (the product exists)."}
+        apply: {status: pending, reasonCode: not_run, reason: "No stage of products/events-pipeline has run through `lab accept` yet (the product exists)."}
+        policy-apply: {status: pending, reasonCode: not_run, reason: "No stage of products/events-pipeline has run through `lab accept` yet (the product exists)."}
+        verify: {status: pending, reasonCode: not_run, reason: "No stage of products/events-pipeline has run through `lab accept` yet (the product exists)."}
+        publish: {status: pending, reasonCode: not_run, reason: "No stage of products/events-pipeline has run through `lab accept` yet (the product exists)."}
+        schedule-sync: {status: pending, reasonCode: not_run, reason: "No stage of products/events-pipeline has run through `lab accept` yet (the product exists)."}
+
+  stream-batch:
+    summary: "A Kafka topic landed in Iceberg by a Spark stream, and one Spark SQL batch over it (the lab's end-to-end product)."
+    domains: [lab]
+    runners:
+      cli:
+        bundle: {status: pending, reasonCode: not_run, reason: "No stage of products/stream-batch has run through `lab accept` yet (the product exists; `lab check --tier e2e` is a separate run of its own)."}
+        validate: {status: pending, reasonCode: not_run, reason: "No stage of products/stream-batch has run through `lab accept` yet (the product exists; `lab check --tier e2e` is a separate run of its own)."}
+        generate-artifacts: {status: pending, reasonCode: not_run, reason: "No stage of products/stream-batch has run through `lab accept` yet (the product exists; `lab check --tier e2e` is a separate run of its own)."}
+        validate-artifacts: {status: pending, reasonCode: not_run, reason: "No stage of products/stream-batch has run through `lab accept` yet (the product exists; `lab check --tier e2e` is a separate run of its own)."}
+        diff: {status: pending, reasonCode: not_run, reason: "No stage of products/stream-batch has run through `lab accept` yet (the product exists; `lab check --tier e2e` is a separate run of its own)."}
+        plan: {status: pending, reasonCode: not_run, reason: "No stage of products/stream-batch has run through `lab accept` yet (the product exists; `lab check --tier e2e` is a separate run of its own)."}
+        apply: {status: pending, reasonCode: not_run, reason: "No stage of products/stream-batch has run through `lab accept` yet (the product exists; `lab check --tier e2e` is a separate run of its own)."}
+        policy-apply: {status: pending, reasonCode: not_run, reason: "No stage of products/stream-batch has run through `lab accept` yet (the product exists; `lab check --tier e2e` is a separate run of its own)."}
+        verify: {status: pending, reasonCode: not_run, reason: "No stage of products/stream-batch has run through `lab accept` yet (the product exists; `lab check --tier e2e` is a separate run of its own)."}
+        publish: {status: pending, reasonCode: not_run, reason: "No stage of products/stream-batch has run through `lab accept` yet (the product exists; `lab check --tier e2e` is a separate run of its own)."}
+        schedule-sync: {status: pending, reasonCode: not_run, reason: "No stage of products/stream-batch has run through `lab accept` yet (the product exists; `lab check --tier e2e` is a separate run of its own)."}
+      dag:
+        bundle: {status: pending, reasonCode: not_run, reason: "No stage of products/stream-batch has run through `lab accept` yet (the product exists; `lab check --tier e2e` is a separate run of its own)."}
+        validate: {status: pending, reasonCode: not_run, reason: "No stage of products/stream-batch has run through `lab accept` yet (the product exists; `lab check --tier e2e` is a separate run of its own)."}
+        generate-artifacts: {status: pending, reasonCode: not_run, reason: "No stage of products/stream-batch has run through `lab accept` yet (the product exists; `lab check --tier e2e` is a separate run of its own)."}
+        validate-artifacts: {status: pending, reasonCode: not_run, reason: "No stage of products/stream-batch has run through `lab accept` yet (the product exists; `lab check --tier e2e` is a separate run of its own)."}
+        diff: {status: pending, reasonCode: not_run, reason: "No stage of products/stream-batch has run through `lab accept` yet (the product exists; `lab check --tier e2e` is a separate run of its own)."}
+        plan: {status: pending, reasonCode: not_run, reason: "No stage of products/stream-batch has run through `lab accept` yet (the product exists; `lab check --tier e2e` is a separate run of its own)."}
+        apply: {status: pending, reasonCode: not_run, reason: "No stage of products/stream-batch has run through `lab accept` yet (the product exists; `lab check --tier e2e` is a separate run of its own)."}
+        policy-apply: {status: pending, reasonCode: not_run, reason: "No stage of products/stream-batch has run through `lab accept` yet (the product exists; `lab check --tier e2e` is a separate run of its own)."}
+        verify: {status: pending, reasonCode: not_run, reason: "No stage of products/stream-batch has run through `lab accept` yet (the product exists; `lab check --tier e2e` is a separate run of its own)."}
+        publish: {status: pending, reasonCode: not_run, reason: "No stage of products/stream-batch has run through `lab accept` yet (the product exists; `lab check --tier e2e` is a separate run of its own)."}
+        schedule-sync: {status: pending, reasonCode: not_run, reason: "No stage of products/stream-batch has run through `lab accept` yet (the product exists; `lab check --tier e2e` is a separate run of its own)."}

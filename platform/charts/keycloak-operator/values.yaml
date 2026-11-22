@@ -1,0 +1,15 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# Defaults reproduce upstream kubernetes.yml at 26.8.0 except that images are
+# pinned by digest (versions.lock.yaml is the source of truth) and the pull
+# policy is IfNotPresent, so the cluster pulls only from the local mirror.
+operator:
+  image: quay.io/keycloak/keycloak-operator:26.8.0@sha256:ca00237bbcc7ae206207ad08a51f024cd521a9842755d2f70b91006ed3b112be
+  imagePullPolicy: IfNotPresent
+  # null keeps upstream's requests/limits (450Mi / 300m request, 450Mi / 700m limit).
+  resources: null
+# Image the operator deploys for each Keycloak CR (env kc.operator.keycloak.image
+# and RELATED_IMAGE_KEYCLOAK in upstream kubernetes.yml).
+keycloak:
+  image: quay.io/keycloak/keycloak:26.8.0@sha256:27b3230fbabb8c9ff3c66c864cf09dcd8a41aca82e5100679d109ef0eeb05741

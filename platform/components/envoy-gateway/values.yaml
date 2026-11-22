@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# Envoy Gateway v1.9.2 (chart gateway-helm v1.9.2): the one Gateway API
+# implementation the lab uses (docs/pins.md). Control-plane and data-plane
+# images are injected from versions.lock.yaml by the Helmfile. The lab's
+# GatewayClass, EnvoyProxy and Gateway live in the lab-gateway release.
+deployment:
+  replicas: 1
+  envoyGateway:
+    resources:
+      requests: {cpu: 50m, memory: 96Mi}
+      limits: {cpu: 500m, memory: 192Mi}
+# Rate limiting is not configured, so the ratelimit image (pinned in the
+# chart's generated config only) stays default-unused.
+certgen:
+  job:
+    resources:
+      requests: {cpu: 10m, memory: 32Mi}
+      limits: {cpu: 100m, memory: 64Mi}

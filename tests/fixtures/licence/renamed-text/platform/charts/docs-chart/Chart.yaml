@@ -1,0 +1,5 @@
+apiVersion: v2
+name: docs-chart
+version: 0.1.0
+appVersion: "1.0.0"
+description: "PLANTED: Apache LICENSE, AGPL text under another file name"

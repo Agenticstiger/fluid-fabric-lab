@@ -1,0 +1,1289 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# versions.lock.yaml - the single source of truth for every chart, image, tool
+# and schema the lab uses. Resolved 2026-10-14 from primary sources (Helm repo
+# indexes, `helm pull`, `crane digest`, registry manifests and referrers, GitHub
+# release assets, licence texts read at the pinned tag). docs/pins.md explains
+# the choices; nothing here is decided by this file alone.
+#
+# Field guide
+#   pin              spec           = the lab's reference combination of versions;
+#                                     in use.
+#                    chosen         = picked where the reference left it open
+#                                     (Gateway API implementation, Kafka version, PG flavour).
+#                    chart-default  = what an upstream chart would run if not overridden;
+#                                     recorded so the mirror and the denylist can see it.
+#                                     NOT run by the lab unless `use: used`.
+#                    denied         = on the licence/supply-chain denylist ; must
+#                                     never be rendered. Recorded with its digest only so
+#                                     the gate can match it.
+#   candidate        (section `candidates:`) newer patch releases recorded but NOT in
+#                    use; they land only after a soak period and a green run.
+#   use              used | optional (off by default) | default-unused | denied
+#   file / sha256    chart cache entry under platform/charts/ and its sha256; `lab`
+#                    and L0 verify it with platform/charts/SHA256SUMS before rendering.
+#   app_version      the chart's own appVersion; `runs` is what the lab actually runs.
+#                    A mismatch is a lint error unless `app_version_mismatch` gives the
+#                    reason.
+#   license          chart_file: the LICENSE file inside the chart archive, read as text.
+#                    `absent` means the archive ships none; chart_spdx is then
+#                    `unlicensed` and upstream_* records the source repository's
+#                    LICENSE, read at the pinned commit and vendored under
+#                    platform/charts/upstream-licenses/.
+#   render_network   none = renders from the cache with no network (all chart
+#                    dependencies are vendored inside the archive).
+#   subcharts        vendored dependencies; enabled_by_lab false means the lab's values
+#                    must keep them off (several are Bitnami and would render denied images).
+#   digest           image index digest (multi-arch manifest list / OCI index) from
+#                    `crane digest`; the cluster pulls `ref@digest` from the local mirror.
+#   signature.mode   key | keyless | none, as observed in the registry on 2026-10-14:
+#                    cosign-sig-tag = legacy `sha256-<digest>.sig` tag;
+#                    sigstore-bundle-oci-referrer = cosign v3 bundle via the OCI 1.1
+#                    referrers API. `identity`/`issuer` come from the Fulcio
+#                    certificate inside the signature (keyless).
+#   sbom.attached    true when an SBOM travels with the image (buildkit in-index SPDX
+#                    attestation, cosign attestation or .sbom tag); a detached SBOM is
+#                    noted but counts as false.
+#   status words in notes: "unverified" means not tested in a running cluster yet.
+
+lock_version: 1
+resolved: "2026-10-14"
+kubernetes_version: v1.36.4   # kindest/node v1.36.4 (kind v0.33.0); schemas are vendored for this version
+
+gateway_api:
+  implementation: envoy-gateway       # chosen, see docs/pins.md
+  version: v1.9.2
+  gateway_api_crds: {bundle_version: v1.6.1, channel: experimental, shipped_by: gateway-helm crds subchart}
+
+charts:
+  - name: cert-manager
+    component: cert-manager
+    pin: spec
+    use: used
+    tier: core             # tiers.yaml must enable this chart's release in this tier (render gate)
+    version: v1.21.2
+    app_version: v1.21.2
+    runs: v1.21.2
+    file: platform/charts/cert-manager-v1.21.2.tgz
+    sha256: 73a56e1728edd6c99f1f31082618c3259d279a76b7ebd3d4bdc5475c2442d34a
+    source: {type: helm-repo, repo: "https://charts.jetstack.io", url: "https://charts.jetstack.io/charts/cert-manager-v1.21.2.tgz", index_created: "2026-09-11"}
+    provenance: {helm_prov: platform/charts/cert-manager-v1.21.2.tgz.prov, key: "https://cert-manager.io/public-keys/cert-manager-keyring-2021-09-20-1020CF3C033D4F35BAE1C19E1226061C665DF13E.gpg"}
+    license: {chart_file: absent, chart_spdx: unlicensed, upstream_repo: "https://github.com/cert-manager/cert-manager", upstream_ref: v1.21.2, upstream_commit: 922a06aa49ee4bb802db268ef72a174af70edd32, upstream_spdx: Apache-2.0, upstream_text: platform/charts/upstream-licenses/cert-manager-v1.21.2.LICENSE}
+    render_network: none
+    subcharts: []
+    crd_render_args: [--set, crds.enabled=true]
+
+  - name: trust-manager
+    component: trust-manager
+    pin: spec
+    use: used
+    tier: core
+    version: v0.25.0
+    app_version: v0.25.0
+    runs: v0.25.0
+    file: platform/charts/trust-manager-v0.25.0.tgz
+    sha256: b271163e34fdf5c0894e56e568f3616c0db3a02d7ea5a8f9bcfd42f9f3e111f0
+    source: {type: helm-repo, repo: "https://charts.jetstack.io", url: "https://charts.jetstack.io/charts/trust-manager-v0.25.0.tgz", index_created: "2026-09-11"}
+    provenance: {helm_prov: none}
+    license: {chart_file: absent, chart_spdx: unlicensed, upstream_repo: "https://github.com/cert-manager/trust-manager", upstream_ref: v0.25.0, upstream_commit: ddeb17c70923c4c6ec44b34c36f4103a0bb798a1, upstream_spdx: Apache-2.0, upstream_text: platform/charts/upstream-licenses/trust-manager-v0.25.0.LICENSE}
+    render_network: none
+    subcharts: []
+    crd_render_args: []
+
+  - name: gateway-helm
+    component: gateway
+    pin: chosen
+    use: used
+    tier: core
+    version: v1.9.2
+    app_version: v1.9.2
+    runs: v1.9.2
+    file: platform/charts/gateway-helm-v1.9.2.tgz
+    sha256: 1079cad009e0885f6e10e5f712257d8e5fdaf911d2ceb3fa1b78632c8f29bbf9
+    source: {type: oci, repo: "oci://docker.io/envoyproxy/gateway-helm", oci_manifest_digest: "sha256:be034275b55deeddd6b7bc1f4da6eeb02b8efc418a4a29e2b1977851b24b1e63", index_created: "2026-09-28"}
+    provenance: {helm_prov: none}
+    license: {chart_file: absent, chart_spdx: unlicensed, upstream_repo: "https://github.com/envoyproxy/gateway", upstream_ref: v1.9.2, upstream_commit: f9f92a112a4033abed5c8d43a5f7e37da257403c, upstream_spdx: Apache-2.0, upstream_text: platform/charts/upstream-licenses/gateway-helm-v1.9.2.LICENSE}
+    render_network: none
+    subcharts:
+      - {name: crds, version: 0.0.0, origin: local (inside the archive), license: Apache-2.0, enabled_by_lab: true, note: "Envoy Gateway CRDs + Gateway API v1.6.1 experimental-channel CRDs"}
+    crd_render_args: []
+
+  - name: cloudnative-pg
+    component: cloudnative-pg
+    pin: spec
+    use: used
+    tier: core
+    version: 0.29.1
+    app_version: 1.30.1
+    runs: 1.30.1
+    file: platform/charts/cloudnative-pg-0.29.1.tgz
+    sha256: b53d3991fe84bcf38767e7702cae78666265427a127a26fff168ab4207d2b1df
+    source: {type: helm-repo, repo: "https://cloudnative-pg.github.io/charts", url: "https://github.com/cloudnative-pg/charts/releases/download/cloudnative-pg-v0.29.1/cloudnative-pg-0.29.1.tgz", index_created: "2026-09-23"}
+    provenance: {helm_prov: platform/charts/cloudnative-pg-0.29.1.tgz.prov}
+    license: {chart_file: present, chart_spdx: Apache-2.0, upstream_repo: "https://github.com/cloudnative-pg/charts", upstream_ref: cloudnative-pg-v0.29.1, upstream_commit: effa01d9a7d6fa390712a83bbadad1784940f2f4, upstream_spdx: Apache-2.0}
+    render_network: none
+    subcharts:
+      - {name: cluster, version: "0.0", origin: "https://cloudnative-pg.github.io/grafana-dashboards (vendored)", license: Apache-2.0, enabled_by_lab: false, note: "Grafana dashboard ConfigMap, condition monitoring.grafanaDashboard.create"}
+    crd_render_args: []
+
+  - name: seaweedfs
+    component: seaweedfs
+    pin: spec
+    use: used
+    tier: core
+    version: 4.48.0
+    app_version: "4.48"
+    runs: "4.48"
+    file: platform/charts/seaweedfs-4.48.0.tgz
+    sha256: fa9beb4b68ee1e56129779643194968210381a33caf47fc177fd17d43efb686e
+    source: {type: helm-repo, repo: "https://seaweedfs.github.io/seaweedfs/helm", url: "https://seaweedfs.github.io/seaweedfs/helm/seaweedfs-4.48.0.tgz", index_created: "2026-09-28"}
+    provenance: {helm_prov: none}
+    license: {chart_file: absent, chart_spdx: unlicensed, upstream_repo: "https://github.com/seaweedfs/seaweedfs", upstream_ref: "4.48", upstream_commit: 530be3e37337488ecc34d58441e0bc476e121c93, upstream_spdx: Apache-2.0, upstream_text: platform/charts/upstream-licenses/seaweedfs-4.48.0.LICENSE}
+    render_network: none
+    subcharts: []
+    notes: "Lab must pass -master.telemetry=false (weed master and weed mini default to sending statistics to telemetry.seaweedfs.com). Whether the chart can pass -s3.iam.config is unverified."
+
+  - name: lakekeeper
+    component: lakekeeper
+    pin: spec
+    use: used
+    tier: core
+    version: 0.12.0+main.cffd5b74
+    app_version: 0.13.3
+    runs: v0.14.0
+    app_version_mismatch: {allow: true, reason: "image v0.14.0 runs on chart 0.12.0 as built from lakekeeper-charts main at cffd5b74, which includes https://github.com/lakekeeper/lakekeeper-charts/pull/156; no chart release ships 0.14.0 yet. Running 0.14 (breaking auth config) on this chart is unverified."}
+    file: "platform/charts/lakekeeper-0.12.0+main.cffd5b74.tgz"
+    sha256: 1bea721e781ded9f0e11ba638cf795104241f84a2717b3d7d23eb220901f4be0
+    source:
+      type: git-packaged
+      repo: "https://github.com/lakekeeper/lakekeeper-charts"
+      commit: cffd5b7473213ee8376f667cae3dc0108940c091
+      path: charts/lakekeeper
+      built: "git archive cffd5b74 charts/lakekeeper; helm dependency update; helm package --version 0.12.0+main.cffd5b74 (helm v4.3.0, 2026-10-14)"
+      reproducible: false
+      diff_from_release_0.12.0: "templates/config/secret-config-envs.yaml one line (secretBackend.kv2.secretMount, https://github.com/lakekeeper/lakekeeper-charts/pull/156) plus Changelog.md; verified by diff against lakekeeper-0.12.0.tgz (sha256 0ea7756903d86dfddba96f032b3a664085be235304192f6538349ef6676600a3)"
+    provenance: {helm_prov: none}
+    license: {chart_file: absent, chart_spdx: unlicensed, upstream_repo: "https://github.com/lakekeeper/lakekeeper-charts", upstream_ref: cffd5b74, upstream_commit: cffd5b7473213ee8376f667cae3dc0108940c091, upstream_spdx: Apache-2.0, upstream_text: "platform/charts/upstream-licenses/lakekeeper-0.12.0+main.cffd5b74.LICENSE"}
+    render_network: none
+    subcharts:
+      - {name: postgres, alias: postgresql, version: 1.6.4, origin: "https://groundhog2k.github.io/helm-charts", sha256: 0403591e1768cffa4d01500bf029cddc0cda6cb944ff1f241981c1670a97e60b, license: MIT, license_text: platform/charts/upstream-licenses/postgres-1.6.4.LICENSE, enabled_by_lab: false, note: "lab uses CNPG; set postgresql.enabled=false"}
+      - {name: openfga, version: 0.3.10, origin: "https://openfga.github.io/helm-charts", sha256: 27f22d368309d8b184301b090509d130a615e4dea8fedcee7a72044391a83d1d, license: Apache-2.0, license_text: platform/charts/upstream-licenses/openfga-0.3.10.LICENSE, enabled_by_lab: false, note: "internalOpenFGA=false; its own Bitnami postgresql 12.12.10 / mysql 9.6.0 / common subcharts sit inside and are never rendered"}
+    crd_render_args: []
+
+  - name: openfga
+    component: openfga
+    pin: spec
+    use: used
+    tier: core
+    version: 0.3.15
+    app_version: v1.21.0
+    runs: v1.21.0
+    file: platform/charts/openfga-0.3.15.tgz
+    sha256: bde4e1fa8962314f403c8f52a49294fd583597e920465be21a78ba165bcc0894
+    source: {type: helm-repo, repo: "https://openfga.github.io/helm-charts", url: "https://github.com/openfga/helm-charts/releases/download/openfga-0.3.15/openfga-0.3.15.tgz", index_created: "2026-09-21"}
+    provenance: {helm_prov: none}
+    license: {chart_file: absent, chart_spdx: unlicensed, upstream_repo: "https://github.com/openfga/helm-charts", upstream_ref: openfga-0.3.15, upstream_commit: c9fb3c73528ebee3170789b86b2abc173fe0d37f, upstream_spdx: Apache-2.0, upstream_text: platform/charts/upstream-licenses/openfga-0.3.15.LICENSE}
+    render_network: none
+    subcharts:
+      - {name: common, version: 2.13.3, origin: "oci://registry-1.docker.io/bitnamicharts (vendored)", license: Apache-2.0, license_text: platform/charts/upstream-licenses/bitnami-charts.LICENSE, enabled_by_lab: true, note: "Bitnami library chart, always rendered (templates only, no images); vendored so render needs no network"}
+      - {name: postgresql, version: 12.12.10, origin: "Bitnami archive index (vendored)", license: Apache-2.0, enabled_by_lab: false, note: "default image bitnamilegacy/postgresql (denied); keep postgresql.enabled=false"}
+      - {name: mysql, version: 9.6.0, origin: "Bitnami archive index (vendored)", license: Apache-2.0, enabled_by_lab: false, note: "default image bitnamilegacy/mysql (denied); off by default"}
+    crd_render_args: []
+    notes: "Chart 0.3.15 is the first chart release shipping the pinned OpenFGA v1.21.0 (chart 0.3.10, which Lakekeeper's chart depends on, ships v1.18.1). OpenFGA v1.21.0 with Lakekeeper 0.14 is unverified; the fallback is v1.14."
+
+  - name: keycloak-operator
+    component: keycloak
+    pin: spec
+    use: used
+    tier: core
+    version: 26.8.0
+    app_version: "26.8.0"
+    runs: "26.8.0"
+    file: platform/charts/keycloak-operator
+    sha256: dir   # a directory, not an archive: every file is listed in platform/charts/SHA256SUMS
+    source:
+      type: raw-manifests-wrapped
+      repo: "https://github.com/keycloak/keycloak-k8s-resources"
+      ref: "26.8.0"
+      commit: 44077f21fbe3af2e8b7fca0312c866c43ff7889b
+      upstream_files:
+        kubernetes/kubernetes.yml: {vendored_as: upstream/kubernetes.yml, sha256: 0b33e74a6aa9f0109744a58e05e1e62e497fa2639f47c32e8c37914bea42fd4e}
+        kubernetes/keycloaks.k8s.keycloak.org-v1.yml: {vendored_as: crds/keycloaks.k8s.keycloak.org-v1.yml, sha256: 20c51247cb6cbc6158098caabeaf6b429dc8c016e35829f5ddd9c468b7582667}
+        kubernetes/keycloakrealmimports.k8s.keycloak.org-v1.yml: {vendored_as: crds/keycloakrealmimports.k8s.keycloak.org-v1.yml, sha256: 8d552e1864d78117a07e535479ddb36e16a42b2695726c875f44828e1323edd4}
+        kubernetes/keycloakoidcclients.k8s.keycloak.org-v1.yml: {vendored_as: crds/keycloakoidcclients.k8s.keycloak.org-v1.yml, sha256: 15d9199822d1918438bd1d093eee3ec8406e7f9d0837c4527fd6da99c63b058a}
+        kubernetes/keycloaksamlclients.k8s.keycloak.org-v1.yml: {vendored_as: crds/keycloaksamlclients.k8s.keycloak.org-v1.yml, sha256: 7c69d146f610f3c40acf4466518e89615b6fce7ee2a03d75cd93b7a9a7bf259e}
+        LICENSE.txt: {vendored_as: upstream/LICENSE.txt, sha256: cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30}
+      wrapper: "Chart.yaml, values.yaml and templates/operator.yaml are Agentics-authored (Apache-2.0); the template re-does upstream kustomization.yml's NamespaceTransformer and swaps images for digest pins"
+    provenance: {helm_prov: none}
+    license: {chart_file: present (upstream/LICENSE.txt), chart_spdx: Apache-2.0, upstream_repo: "https://github.com/keycloak/keycloak-k8s-resources", upstream_ref: "26.8.0", upstream_commit: 44077f21fbe3af2e8b7fca0312c866c43ff7889b, upstream_spdx: Apache-2.0}
+    render_network: none
+    subcharts: []
+    crd_render_args: []
+    notes: "Operator default resources 450Mi/300m request. The Keycloak server the operator deploys defaults to requests 1700 MiB / limits 2 GiB; set resources explicitly on the Keycloak CR. The operator does not manage the database."
+
+  - name: trino
+    component: trino
+    pin: spec
+    use: used
+    tier: core
+    version: 1.44.0
+    app_version: "483"
+    runs: "483"
+    file: platform/charts/trino-1.44.0.tgz
+    sha256: ce3c2f6525d896513c5e20cac19a1260bf108f1d17f65188be45ccea9fb36caa
+    source: {type: helm-repo, repo: "https://trinodb.github.io/charts", url: "https://github.com/trinodb/charts/releases/download/trino-1.44.0/trino-1.44.0.tgz", index_created: "2026-10-11"}
+    provenance: {helm_prov: none}
+    license: {chart_file: absent, chart_spdx: unlicensed, upstream_repo: "https://github.com/trinodb/charts", upstream_ref: trino-1.44.0, upstream_commit: c524e513ddb408cb8410452dd0b208eb60a0ab97, upstream_spdx: Apache-2.0, upstream_text: platform/charts/upstream-licenses/trino-1.44.0.LICENSE}
+    render_network: none
+    subcharts: []
+    crd_render_args: []
+    notes: "Chart defaults are what the footprint floor must catch: server.workers 2, coordinator and worker maxHeapSize 8G, OPA sidecar image 1.16.2-static. Lab overrides: workers 0 + include-coordinator, maxHeapPercent, container limit, OPA 1.21.1-static with --skip-version-check."
+
+  - name: strimzi-kafka-operator
+    component: strimzi
+    pin: spec
+    use: used
+    tier: streaming
+    version: 1.2.0
+    app_version: 1.2.0
+    runs: 1.2.0
+    file: platform/charts/strimzi-kafka-operator-helm-3-chart-1.2.0.tgz
+    sha256: 0f8a50b2f19bd99482f9fd6e17cf42902f72f9e594a136813ac3f0b7af422efd
+    source: {type: helm-repo, repo: "https://strimzi.io/charts", url: "https://github.com/strimzi/strimzi-kafka-operator/releases/download/1.2.0/strimzi-kafka-operator-helm-3-chart-1.2.0.tgz", index_created: "2026-08-19"}
+    provenance: {helm_prov: none, sbom_release_asset: "https://github.com/strimzi/strimzi-kafka-operator/releases/download/1.2.0/strimzi-sbom-1.2.0.tar.gz"}
+    license: {chart_file: absent, chart_spdx: unlicensed, upstream_repo: "https://github.com/strimzi/strimzi-kafka-operator", upstream_ref: 1.2.0, upstream_commit: 6c7b43c4af0db547c10463ba09d1dfa6f5e156a0, upstream_spdx: Apache-2.0, upstream_text: platform/charts/upstream-licenses/strimzi-kafka-operator-1.2.0.LICENSE}
+    render_network: none
+    subcharts: []
+    crd_render_args: []
+    notes: "Supports Kafka 4.2.0, 4.2.1, 4.3.0, 4.3.1; the lab uses 4.3.1. Requires Kubernetes >= 1.32 for 1.3.0 (candidate); 1.2.0 runs on v1.36.4."
+
+  - name: airflow
+    component: airflow
+    pin: spec
+    use: used
+    tier: orchestration
+    version: 1.22.0
+    app_version: 3.2.2
+    runs: 3.2.2
+    file: platform/charts/airflow-1.22.0.tgz
+    sha256: 1f7d1dfe3d58e2c54899950aba907a43625a18c8b6fb3c54760c21592129a5b6
+    source: {type: helm-repo, repo: "https://airflow.apache.org", url: "https://archive.apache.org/dist/airflow/helm-chart/1.22.0/airflow-1.22.0.tgz", index_created: "2026-05-31", released: "2026-06-13"}
+    provenance: {helm_prov: platform/charts/airflow-1.22.0.tgz.prov, key: "https://downloads.apache.org/airflow/KEYS"}
+    license: {chart_file: present, chart_spdx: Apache-2.0, notice_file: present, upstream_repo: "https://github.com/apache/airflow", upstream_ref: helm-chart/1.22.0, upstream_commit: 801e82321d7b9911976beab0e02bb3a0b75a943a, upstream_spdx: Apache-2.0}
+    render_network: none
+    subcharts:
+      - {name: postgresql, version: 13.2.24, origin: "https://charts.bitnami.com/bitnami (vendored)", license: Apache-2.0, enabled_by_lab: false, note: "image bitnamilegacy/postgresql:16.1.0-debian-11-r15 (denied) with postgresPassword postgres; set postgresql.enabled=false"}
+    crd_render_args: []
+    notes: "Airflow 3.3.2 on this chart is unverified; the lab runs the chart's own 3.2.2. Lab sets executor LocalExecutor and redis/statsd/postgresql disabled."
+
+  - name: kafka-ui
+    component: kafbat-ui
+    pin: spec
+    use: optional
+    tier: addon
+    version: 1.6.5
+    app_version: v1.5.0
+    runs: v1.5.0
+    file: platform/charts/kafka-ui-1.6.5.tgz
+    sha256: b310da9471867b37e43face0e474eae0788c4562d3573c9f13be027b7b0e11b8
+    source: {type: helm-repo, repo: "https://kafbat.github.io/helm-charts", url: "https://kafbat.github.io/helm-charts/kafka-ui-1.6.5.tgz", index_created: "2026-08-10"}
+    provenance: {helm_prov: none}
+    license: {chart_file: absent, chart_spdx: unlicensed, upstream_repo: "https://github.com/kafbat/helm-charts", upstream_ref: charts/kafka-ui-1.6.5, upstream_commit: 9f372e85b324d2a857e39c123f77a7e52a9549d4, upstream_spdx: Apache-2.0, upstream_text: platform/charts/upstream-licenses/kafka-ui-1.6.5.LICENSE}
+    render_network: none
+    subcharts: []
+    crd_render_args: []
+
+  - name: superset
+    component: superset
+    pin: spec
+    use: optional
+    tier: addon
+    version: 0.22.8
+    app_version: 6.1.0
+    runs: 6.1.0
+    file: platform/charts/superset-0.22.8.tgz
+    sha256: 58075998f62206236a7686e16cd966b190350c16ecf54845034ba2be09e1f886
+    source: {type: helm-repo, repo: "https://apache.github.io/superset", url: "https://github.com/apache/superset/releases/download/superset-helm-chart-0.22.8/superset-0.22.8.tgz", index_created: "2026-09-09"}
+    provenance: {helm_prov: none}
+    license: {chart_file: absent, chart_spdx: unlicensed, upstream_repo: "https://github.com/apache/superset", upstream_ref: superset-helm-chart-0.22.8, upstream_commit: 9a02c4b611b70b257c332a701b938edeb380b555, upstream_spdx: Apache-2.0, upstream_text: platform/charts/upstream-licenses/superset-0.22.8.LICENSE}
+    render_network: none
+    subcharts:
+      - {name: postgresql, version: 16.7.27, origin: "oci://registry-1.docker.io/bitnamicharts (vendored)", license: Apache-2.0, enabled_by_lab: false, note: "image bitnamilegacy/postgresql (denied)"}
+      - {name: redis, version: 17.9.4, origin: "oci://registry-1.docker.io/bitnamicharts (vendored)", license: Apache-2.0, enabled_by_lab: false, note: "image bitnamilegacy/redis (denied)"}
+    crd_render_args: []
+    notes: "Chart.yaml says `deprecated: true` (helm prints a warning). Default image goes through apachesuperset.docker.scarf.sh, a Scarf download-analytics pull-through proxy; the lab overrides to docker.io/apache/superset (same digest). Both Bitnami subcharts must stay off, so a usable Superset needs CNPG and an external Redis-compatible cache: optional add-on only."
+
+
+# Every image the platform can run: chart defaults AND the overrides required
+# by the lab. `use` says whether the lab runs it.
+images:
+  - id: kind-node
+    component: cluster
+    use: used
+    pin: spec
+    ref: "docker.io/kindest/node:v1.36.4"
+    registry: docker.io
+    repository: kindest/node
+    tag: "v1.36.4"
+    digest: "sha256:099e049362a1526b2db71494e1947aae99bd16290d7c895f2b7ea312e3cbfaed"
+    multi_arch_index: true
+    platforms: [linux/amd64, linux/arm64]
+    license: {spdx: Apache-2.0, source: "https://github.com/kubernetes-sigs/kind", note: "Debian-based node image; bundles containerd, kubelet and Kubernetes binaries (Apache-2.0) plus distro packages"}
+    signature: {mode: none, note: "no cosign .sig tag and no sigstore referrer found on 2026-10-14"}
+    sbom: {attached: false}
+    note: "kind v0.33.0 node image"
+  - id: cert-manager-controller
+    component: cert-manager
+    use: used
+    pin: spec
+    ref: "quay.io/jetstack/cert-manager-controller:v1.21.2"
+    registry: quay.io
+    repository: jetstack/cert-manager-controller
+    tag: "v1.21.2"
+    digest: "sha256:70f532fd9cfde0b09d55687200942399d89838bc2d5d5b45152eb799a15912b8"
+    multi_arch_index: true
+    platforms: [linux/amd64, linux/arm/v7, linux/arm64/v8, linux/ppc64le, linux/s390x]
+    license: {spdx: Apache-2.0, source: "https://github.com/cert-manager/cert-manager"}
+    signature: {mode: key, format: cosign-sig-tag, key: "https://cert-manager.io/public-keys/cert-manager-pubkey-2021-09-20.pem", verify: "cosign verify --signature-digest-algorithm sha512 --insecure-ignore-tlog --key <key> (cert-manager.io/docs/installation/code-signing)"}
+    sbom: {attached: false}
+  - id: cert-manager-webhook
+    component: cert-manager
+    use: used
+    pin: spec
+    ref: "quay.io/jetstack/cert-manager-webhook:v1.21.2"
+    registry: quay.io
+    repository: jetstack/cert-manager-webhook
+    tag: "v1.21.2"
+    digest: "sha256:a60e2dac46dbb8a7f3df95c54ce941012f54c2fe022f0ee55aaa1ab40ed957ae"
+    multi_arch_index: true
+    platforms: [linux/amd64, linux/arm/v7, linux/arm64/v8, linux/ppc64le, linux/s390x]
+    license: {spdx: Apache-2.0, source: "https://github.com/cert-manager/cert-manager"}
+    signature: {mode: key, format: cosign-sig-tag, key: "https://cert-manager.io/public-keys/cert-manager-pubkey-2021-09-20.pem", verify: "cosign verify --signature-digest-algorithm sha512 --insecure-ignore-tlog --key <key> (cert-manager.io/docs/installation/code-signing)"}
+    sbom: {attached: false}
+  - id: cert-manager-cainjector
+    component: cert-manager
+    use: used
+    pin: spec
+    ref: "quay.io/jetstack/cert-manager-cainjector:v1.21.2"
+    registry: quay.io
+    repository: jetstack/cert-manager-cainjector
+    tag: "v1.21.2"
+    digest: "sha256:c85268c64f2e0e76684bf5fe8906caff34b82523561c6affe0fae3546bd87562"
+    multi_arch_index: true
+    platforms: [linux/amd64, linux/arm/v7, linux/arm64/v8, linux/ppc64le, linux/s390x]
+    license: {spdx: Apache-2.0, source: "https://github.com/cert-manager/cert-manager"}
+    signature: {mode: key, format: cosign-sig-tag, key: "https://cert-manager.io/public-keys/cert-manager-pubkey-2021-09-20.pem", verify: "cosign verify --signature-digest-algorithm sha512 --insecure-ignore-tlog --key <key> (cert-manager.io/docs/installation/code-signing)"}
+    sbom: {attached: false}
+  - id: cert-manager-startupapicheck
+    component: cert-manager
+    use: used
+    pin: spec
+    ref: "quay.io/jetstack/cert-manager-startupapicheck:v1.21.2"
+    registry: quay.io
+    repository: jetstack/cert-manager-startupapicheck
+    tag: "v1.21.2"
+    digest: "sha256:46e75b6866359ffb5d82624f41e3ed1c70b2994982702ced547ce5edb418a8f5"
+    multi_arch_index: true
+    platforms: [linux/amd64, linux/arm/v7, linux/arm64/v8, linux/ppc64le, linux/s390x]
+    license: {spdx: Apache-2.0, source: "https://github.com/cert-manager/cert-manager"}
+    signature: {mode: key, format: cosign-sig-tag, key: "https://cert-manager.io/public-keys/cert-manager-pubkey-2021-09-20.pem", verify: "cosign verify --signature-digest-algorithm sha512 --insecure-ignore-tlog --key <key> (cert-manager.io/docs/installation/code-signing)"}
+    sbom: {attached: false}
+    note: "post-install hook Job"
+  - id: cert-manager-acmesolver
+    component: cert-manager
+    use: default-unused
+    pin: chart-default
+    ref: "quay.io/jetstack/cert-manager-acmesolver:v1.21.2"
+    registry: quay.io
+    repository: jetstack/cert-manager-acmesolver
+    tag: "v1.21.2"
+    digest: "sha256:699b40d622211ab7accad8a21b04c5fbaa1841ef7a12621e8de492dbe27b2503"
+    multi_arch_index: true
+    platforms: [linux/amd64, linux/arm/v7, linux/arm64/v8, linux/ppc64le, linux/s390x]
+    license: {spdx: Apache-2.0, source: "https://github.com/cert-manager/cert-manager"}
+    signature: {mode: key, format: cosign-sig-tag, key: "https://cert-manager.io/public-keys/cert-manager-pubkey-2021-09-20.pem", verify: "cosign verify --signature-digest-algorithm sha512 --insecure-ignore-tlog --key <key> (cert-manager.io/docs/installation/code-signing)"}
+    sbom: {attached: false}
+    note: "only spawned for ACME issuers; lab uses a CA issuer"
+  - id: trust-manager
+    component: trust-manager
+    use: used
+    pin: spec
+    ref: "quay.io/jetstack/trust-manager:v0.25.0"
+    registry: quay.io
+    repository: jetstack/trust-manager
+    tag: "v0.25.0"
+    digest: "sha256:0521921c2a46d14d0417336b20bcde69215ef3164f2977cc939d53c6e5224a17"
+    multi_arch_index: true
+    platforms: [linux/amd64, linux/arm/v7, linux/arm64, linux/ppc64le, linux/s390x]
+    license: {spdx: Apache-2.0, source: "https://github.com/cert-manager/trust-manager"}
+    signature: {mode: keyless, format: cosign-sig-tag, identity: "https://github.com/cert-manager/trust-manager/.github/workflows/release.yaml@refs/tags/v0.25.0", issuer: "https://token.actions.githubusercontent.com"}
+    sbom: {attached: false}
+  - id: trust-pkg-debian-trixie
+    component: trust-manager
+    use: default-unused
+    pin: chart-default
+    ref: "quay.io/jetstack/trust-pkg-debian-trixie:20250419.2"
+    registry: quay.io
+    repository: jetstack/trust-pkg-debian-trixie
+    tag: "20250419.2"
+    digest: "sha256:3093d4f6634fbd9eaf6a70a06d809132850d7cae30da82396d3b1f884c1135e7"
+    multi_arch_index: true
+    platforms: [linux/amd64, linux/arm/v7, linux/arm64, linux/ppc64le, linux/s390x]
+    license: {spdx: Apache-2.0, source: "https://github.com/cert-manager/trust-manager", note: "contains the Debian ca-certificates bundle (MPL-2.0 data)"}
+    signature: {mode: keyless, format: cosign-sig-tag, identity: "https://github.com/cert-manager/trust-manager/.github/workflows/trust-package-release-debian-trixie.yaml@refs/heads/main", issuer: "https://token.actions.githubusercontent.com"}
+    sbom: {attached: false}
+    note: "default public-CA package init container; lab sets defaultPackage.enabled=false (lab CA only)"
+  - id: envoy-gateway
+    component: gateway
+    use: used
+    pin: chosen
+    ref: "docker.io/envoyproxy/gateway:v1.9.2"
+    registry: docker.io
+    repository: envoyproxy/gateway
+    tag: "v1.9.2"
+    digest: "sha256:9d67017c442a70e6ae9f1a358e6c80eb653c67c2e40823d9a991e0daf37ba926"
+    multi_arch_index: true
+    platforms: [linux/amd64, linux/arm64]
+    license: {spdx: Apache-2.0, source: "https://github.com/envoyproxy/gateway"}
+    signature: {mode: none, note: "no cosign .sig tag and no sigstore referrer found on 2026-10-14"}
+    sbom: {attached: false}
+    note: "control plane, certgen Job and shutdown-manager sidecar"
+  - id: envoy-proxy
+    component: gateway
+    use: used
+    pin: chosen
+    ref: "docker.io/envoyproxy/envoy:distroless-v1.39.1"
+    registry: docker.io
+    repository: envoyproxy/envoy
+    tag: "distroless-v1.39.1"
+    digest: "sha256:eb2c01c13125d1629637cb4e4cce7207009fb7cc2c8027f9742758549d15b6f4"
+    multi_arch_index: true
+    platforms: [linux/amd64, linux/arm64]
+    license: {spdx: Apache-2.0, source: "https://github.com/envoyproxy/envoy", note: "distroless base"}
+    signature: {mode: none, note: "no cosign .sig tag and no sigstore referrer found on 2026-10-14"}
+    sbom: {attached: false}
+    note: "data plane; compiled-in default of gateway v1.9.2 (api/v1alpha1/shared_types.go pins this digest)"
+  - id: envoy-ratelimit
+    component: gateway
+    use: default-unused
+    pin: chart-default
+    ref: "docker.io/envoyproxy/ratelimit:0482748e"
+    registry: docker.io
+    repository: envoyproxy/ratelimit
+    tag: "0482748e"
+    digest: "sha256:5fdd8e3ae335ab6d64316f8d2fd9a886830075cbbb40a1d8065c869275909162"
+    multi_arch_index: true
+    platforms: [linux/amd64, linux/arm64]
+    license: {spdx: Apache-2.0, source: "https://github.com/envoyproxy/ratelimit"}
+    signature: {mode: none, note: "no cosign .sig tag and no sigstore referrer found on 2026-10-14"}
+    sbom: {attached: false}
+    slsa_provenance: [slsa-v1]
+    note: "only deployed when global rate limiting is configured"
+  - id: cnpg-operator
+    component: cloudnative-pg
+    use: used
+    pin: spec
+    ref: "ghcr.io/cloudnative-pg/cloudnative-pg:1.30.1"
+    registry: ghcr.io
+    repository: cloudnative-pg/cloudnative-pg
+    tag: "1.30.1"
+    digest: "sha256:923c267ec29636db3bee20f993d0ec4973fa22998e1adad37da79e4d32b5bc07"
+    multi_arch_index: true
+    platforms: [linux/amd64, linux/arm64]
+    license: {spdx: Apache-2.0, source: "https://github.com/cloudnative-pg/cloudnative-pg", note: "distroless static-debian13 base"}
+    signature: {mode: none, note: "no cosign .sig tag and no sigstore referrer found on 2026-10-14"}
+    sbom: {attached: true, form: [buildkit-in-index-spdx]}
+    slsa_provenance: [slsa-v0.2, slsa-v1]
+  - id: cnpg-postgresql
+    component: cloudnative-pg
+    use: used
+    pin: spec
+    ref: "ghcr.io/cloudnative-pg/postgresql:17.11-standard-trixie"
+    registry: ghcr.io
+    repository: cloudnative-pg/postgresql
+    tag: "17.11-standard-trixie"
+    digest: "sha256:b3d52e61dc97095efbb603dcb38178491ab3d4b99753cfe6e642ac57366469c1"
+    multi_arch_index: true
+    platforms: [linux/amd64, linux/arm64]
+    license: {spdx: Apache-2.0, source: "https://github.com/cloudnative-pg/postgres-containers", note: "image build files Apache-2.0; PostgreSQL itself is PostgreSQL licence; Debian trixie-slim base"}
+    signature: {mode: none, note: "no cosign .sig tag and no sigstore referrer found on 2026-10-14"}
+    sbom: {attached: true, form: [buildkit-in-index-spdx]}
+    slsa_provenance: [slsa-v1]
+    note: "override: PostgreSQL 17.11; operator default is 18.6-system-trixie; system flavour is deprecated upstream"
+  - id: cnpg-postgresql-default
+    component: cloudnative-pg
+    use: default-unused
+    pin: chart-default
+    ref: "ghcr.io/cloudnative-pg/postgresql:18.6-system-trixie"
+    registry: ghcr.io
+    repository: cloudnative-pg/postgresql
+    tag: "18.6-system-trixie"
+    digest: "sha256:5efb66993894055f0aa50bd94337c6c4ff2e2129f4d433c527151aebbf283fb0"
+    multi_arch_index: true
+    platforms: [linux/amd64, linux/arm64]
+    license: {spdx: Apache-2.0, source: "https://github.com/cloudnative-pg/postgres-containers", note: "image build files Apache-2.0; PostgreSQL itself is PostgreSQL licence; Debian trixie-slim base"}
+    signature: {mode: none, note: "no cosign .sig tag and no sigstore referrer found on 2026-10-14"}
+    sbom: {attached: true, form: [buildkit-in-index-spdx]}
+    slsa_provenance: [slsa-v1]
+    note: "operator compiled-in DefaultImageName"
+  - id: cnpg-pgbouncer
+    component: cloudnative-pg
+    use: default-unused
+    pin: chart-default
+    ref: "ghcr.io/cloudnative-pg/pgbouncer:1.25.2"
+    registry: ghcr.io
+    repository: cloudnative-pg/pgbouncer
+    tag: "1.25.2"
+    digest: "sha256:b15c428057d1ffbc19fb70496911a5f1a47066dcc1315bf794f4e85ade29e2e5"
+    multi_arch_index: true
+    platforms: [linux/amd64, linux/arm64]
+    license: {spdx: Apache-2.0, source: "https://github.com/cloudnative-pg/pgbouncer-containers", note: "PgBouncer itself is ISC; Debian trixie-slim base"}
+    signature: {mode: none, note: "no cosign .sig tag and no sigstore referrer found on 2026-10-14"}
+    sbom: {attached: true, form: [buildkit-in-index-spdx]}
+    slsa_provenance: [slsa-v1]
+    note: "only for Pooler resources"
+  - id: seaweedfs
+    component: seaweedfs
+    use: used
+    pin: spec
+    ref: "docker.io/chrislusf/seaweedfs:4.48"
+    registry: docker.io
+    repository: chrislusf/seaweedfs
+    tag: "4.48"
+    digest: "sha256:4e61d15fd35994cb1e43e1e553dff106794841fd9a99ade2fc8c8bfce4d7872d"
+    multi_arch_index: true
+    platforms: [linux/386, linux/amd64, linux/arm/v7, linux/arm64]
+    license: {spdx: Apache-2.0, source: "https://github.com/seaweedfs/seaweedfs"}
+    signature: {mode: keyless, format: cosign-sig-tag, identity: "https://github.com/seaweedfs/seaweedfs/.github/workflows/container_release_unified.yml@refs/tags/4.48", issuer: "https://token.actions.githubusercontent.com"}
+    sbom: {attached: false}
+    note: "must run with -master.telemetry=false"
+  - id: lakekeeper-catalog
+    component: lakekeeper
+    use: used
+    pin: spec
+    ref: "quay.io/lakekeeper/catalog:v0.14.0"
+    registry: quay.io
+    repository: lakekeeper/catalog
+    tag: "v0.14.0"
+    digest: "sha256:de87eaca929f208ec0ea4594706d3d70cec50620b62fea07c17e18fdb1a4c592"
+    multi_arch_index: true
+    platforms: [linux/amd64, linux/arm64]
+    license: {spdx: Apache-2.0, source: "https://github.com/lakekeeper/lakekeeper"}
+    signature: {mode: none, note: "no cosign .sig tag and no sigstore referrer found on 2026-10-14"}
+    sbom: {attached: false}
+    note: "override: chart 0.12.0 defaults to v0.13.3"
+  - id: lakekeeper-catalog-chart-default
+    component: lakekeeper
+    use: default-unused
+    pin: chart-default
+    ref: "quay.io/lakekeeper/catalog:v0.13.3"
+    registry: quay.io
+    repository: lakekeeper/catalog
+    tag: "v0.13.3"
+    digest: "sha256:db2ba6168eb107f22242fb7f2edc4016fa35e57bdcc606894e809c418e32e8dc"
+    multi_arch_index: true
+    platforms: [linux/amd64, linux/arm64]
+    license: {spdx: Apache-2.0, source: "https://github.com/lakekeeper/lakekeeper"}
+    signature: {mode: none, note: "no cosign .sig tag and no sigstore referrer found on 2026-10-14"}
+    sbom: {attached: false}
+    note: "chart appVersion"
+  - id: lakekeeper-test-curl
+    component: lakekeeper
+    use: default-unused
+    pin: chart-default
+    ref: "docker.io/curlimages/curl:latest"
+    registry: docker.io
+    repository: curlimages/curl
+    tag: "latest"
+    digest: "sha256:a134550be58ab783810e613ae96fd253c38f7bdd16d9bf9be350700c7a29ac06"
+    multi_arch_index: true
+    platforms: [linux/386, linux/amd64, linux/arm64/v8, linux/arm/v7, linux/ppc64le]
+    license: {spdx: MIT, source: "https://github.com/curl/curl-container", note: "curl itself is the curl licence"}
+    signature: {mode: key, format: sigstore-bundle-oci-referrer, bundles: 2, key: unpublished-here}
+    sbom: {attached: false}
+    note: "helm test hook only; floating tag; lab never runs helm test"
+  - id: lakekeeper-postgres-subchart
+    component: lakekeeper
+    use: default-unused
+    pin: chart-default
+    ref: "docker.io/library/postgres:18.4"
+    registry: docker.io
+    repository: library/postgres
+    tag: "18.4"
+    digest: "sha256:a02db8cac496f15b094798a38254f14d6e00741f709360e5e00bb6668ea31636"
+    multi_arch_index: true
+    platforms: [linux/amd64, linux/arm/v5, linux/arm/v7, linux/arm64/v8, linux/386, linux/ppc64le, linux/riscv64, linux/s390x]
+    license: {spdx: MIT, source: "https://github.com/docker-library/postgres", note: "Docker official image build files MIT; PostgreSQL licence"}
+    signature: {mode: none, note: "no cosign .sig tag and no sigstore referrer found on 2026-10-14"}
+    sbom: {attached: true, form: [buildkit-in-index-spdx]}
+    slsa_provenance: [slsa-v0.2]
+    note: "groundhog2k postgres subchart; lab sets postgresql.enabled=false (CNPG instead)"
+  - id: lakekeeper-opa-bridge
+    component: lakekeeper
+    use: default-unused
+    pin: chart-default
+    ref: "docker.io/openpolicyagent/opa:1.18.1"
+    registry: docker.io
+    repository: openpolicyagent/opa
+    tag: "1.18.1"
+    digest: "sha256:fffa40071c12b8da84518387ed5d7207322d74b04689aa3533e0ebe1e57666d5"
+    multi_arch_index: true
+    platforms: [linux/amd64, linux/arm64]
+    license: {spdx: Apache-2.0, source: "https://github.com/open-policy-agent/opa"}
+    signature: {mode: none, note: "no cosign .sig tag and no sigstore referrer found on 2026-10-14"}
+    sbom: {attached: false}
+    note: "OPABridge sidecar; not used (OPA runs as a Trino sidecar)"
+  - id: lakekeeper-internal-openfga-postgres
+    component: lakekeeper
+    use: denied
+    pin: denied
+    ref: "quay.io/lakekeeper/postgresql:15.4.0-debian-11-r45"
+    registry: quay.io
+    repository: lakekeeper/postgresql
+    tag: "15.4.0-debian-11-r45"
+    digest: "sha256:5dba7e6a514d5d628d484d23212dcaf3d7c5816af1d4970649547a03a99f78dc"
+    multi_arch_index: true
+    platforms: [linux/amd64, linux/arm64]
+    license: {spdx: Apache-2.0, source: "https://github.com/bitnami/containers", note: "Bitnami build on minideb bullseye (Debian 11, LTS ended 2026-08-31)"}
+    signature: {mode: none, note: "no cosign .sig tag and no sigstore referrer found on 2026-10-14"}
+    sbom: {attached: false}
+    note: "internalOpenFGA subchart DB; Debian 11 LTS ended 2026-08-31; allowInsecureImages"
+  - id: openfga
+    component: openfga
+    use: used
+    pin: spec
+    ref: "docker.io/openfga/openfga:v1.21.0"
+    registry: docker.io
+    repository: openfga/openfga
+    tag: "v1.21.0"
+    digest: "sha256:2113c664a486b5da8d7a2cdab479e0d4e30639c80fd2c000540f645c1dbc1e55"
+    multi_arch_index: true
+    platforms: [linux/amd64, linux/arm64]
+    license: {spdx: Apache-2.0, source: "https://github.com/openfga/openfga", note: "Chainguard static base"}
+    signature: {mode: keyless, format: cosign-sig-tag, identity: "https://github.com/openfga/openfga/.github/workflows/release.yaml@refs/tags/v1.21.0", issuer: "https://token.actions.githubusercontent.com"}
+    sbom: {attached: false}
+    slsa_provenance: [slsa-v0.2]
+  - id: openfga-bitnami-postgresql
+    component: openfga
+    use: denied
+    pin: denied
+    ref: "docker.io/bitnamilegacy/postgresql:15.4.0-debian-11-r45"
+    registry: docker.io
+    repository: bitnamilegacy/postgresql
+    tag: "15.4.0-debian-11-r45"
+    digest: "sha256:5dba7e6a514d5d628d484d23212dcaf3d7c5816af1d4970649547a03a99f78dc"
+    multi_arch_index: true
+    platforms: [linux/amd64, linux/arm64]
+    license: {spdx: Apache-2.0, source: "https://github.com/bitnami/containers", note: "Bitnami legacy image, minideb bullseye"}
+    signature: {mode: none, note: "no cosign .sig tag and no sigstore referrer found on 2026-10-14"}
+    sbom: {attached: false}
+    note: "Bitnami subchart default; lab sets postgresql.enabled=false"
+  - id: openfga-bitnami-mysql
+    component: openfga
+    use: denied
+    pin: denied
+    ref: "docker.io/bitnamilegacy/mysql:8.0.32-debian-11-r14"
+    registry: docker.io
+    repository: bitnamilegacy/mysql
+    tag: "8.0.32-debian-11-r14"
+    digest: "sha256:854a0e507ce5a2807f5e732f0e65c15b6e71100d774fc40f1616b4a37bca6a01"
+    multi_arch_index: true
+    platforms: [linux/amd64, linux/arm64]
+    license: {spdx: Apache-2.0, source: "https://github.com/bitnami/containers", note: "Bitnami legacy image, minideb bullseye"}
+    signature: {mode: none, note: "no cosign .sig tag and no sigstore referrer found on 2026-10-14"}
+    sbom: {attached: false}
+    note: "Bitnami subchart default; disabled by default"
+  - id: keycloak-operator
+    component: keycloak
+    use: used
+    pin: spec
+    ref: "quay.io/keycloak/keycloak-operator:26.8.0"
+    registry: quay.io
+    repository: keycloak/keycloak-operator
+    tag: "26.8.0"
+    digest: "sha256:ca00237bbcc7ae206207ad08a51f024cd521a9842755d2f70b91006ed3b112be"
+    multi_arch_index: true
+    platforms: [linux/amd64, linux/arm64, linux/ppc64le]
+    license: {spdx: Apache-2.0, source: "https://github.com/keycloak/keycloak", note: "Red Hat UBI 9 micro base: UBI EULA (non-OSI layer)"}
+    signature: {mode: none, note: "no cosign .sig tag and no sigstore referrer found on 2026-10-14"}
+    sbom: {attached: false}
+    slsa_provenance: [slsa-v1]
+  - id: keycloak
+    component: keycloak
+    use: used
+    pin: spec
+    ref: "quay.io/keycloak/keycloak:26.8.0"
+    registry: quay.io
+    repository: keycloak/keycloak
+    tag: "26.8.0"
+    digest: "sha256:27b3230fbabb8c9ff3c66c864cf09dcd8a41aca82e5100679d109ef0eeb05741"
+    multi_arch_index: true
+    platforms: [linux/amd64, linux/arm64, linux/ppc64le]
+    license: {spdx: Apache-2.0, source: "https://github.com/keycloak/keycloak", note: "Red Hat UBI 9 micro base: UBI EULA (non-OSI layer)"}
+    signature: {mode: none, note: "no cosign .sig tag and no sigstore referrer found on 2026-10-14"}
+    sbom: {attached: false}
+    slsa_provenance: [slsa-v1]
+  - id: trino
+    component: trino
+    use: used
+    pin: spec
+    ref: "docker.io/trinodb/trino:483"
+    registry: docker.io
+    repository: trinodb/trino
+    tag: "483"
+    digest: "sha256:db58cc93e593a2706553745f276bb119c9810e69918be56ecde088ba7ccb0534"
+    multi_arch_index: true
+    platforms: [linux/amd64, linux/arm64, linux/ppc64le]
+    license: {spdx: Apache-2.0, source: "https://github.com/trinodb/trino", note: "Red Hat UBI 10 micro base: UBI EULA (non-OSI layer)"}
+    signature: {mode: none, note: "no cosign .sig tag and no sigstore referrer found on 2026-10-14"}
+    sbom: {attached: false}
+  - id: opa
+    component: trino
+    use: used
+    pin: spec
+    ref: "docker.io/openpolicyagent/opa:1.21.1-static"
+    registry: docker.io
+    repository: openpolicyagent/opa
+    tag: "1.21.1-static"
+    digest: "sha256:4675ab04ad1627f74741d2d9c5142698c79e18b7b09f192587d31d6dba20838e"
+    multi_arch_index: true
+    platforms: [linux/amd64, linux/arm64]
+    license: {spdx: Apache-2.0, source: "https://github.com/open-policy-agent/opa"}
+    signature: {mode: none, note: "no cosign .sig tag and no sigstore referrer found on 2026-10-14"}
+    sbom: {attached: false}
+    note: "override: Trino coordinator sidecar; chart default 1.16.2-static"
+  - id: opa-chart-default
+    component: trino
+    use: default-unused
+    pin: chart-default
+    ref: "docker.io/openpolicyagent/opa:1.16.2-static"
+    registry: docker.io
+    repository: openpolicyagent/opa
+    tag: "1.16.2-static"
+    digest: "sha256:bf5d926c9c5163cd43e56de43f47165d12c1e6a91911d0a20648f8e3ab085a61"
+    multi_arch_index: true
+    platforms: [linux/amd64, linux/arm64]
+    license: {spdx: Apache-2.0, source: "https://github.com/open-policy-agent/opa"}
+    signature: {mode: none, note: "no cosign .sig tag and no sigstore referrer found on 2026-10-14"}
+    sbom: {attached: false}
+    note: "trino chart 1.44.0 default sidecar image"
+  - id: strimzi-operator
+    component: strimzi
+    use: used
+    pin: spec
+    ref: "quay.io/strimzi/operator:1.2.0"
+    registry: quay.io
+    repository: strimzi/operator
+    tag: "1.2.0"
+    digest: "sha256:77f8fa8121a67561c3418de985783d197f51b8931e9a47f793dc0437dc6bb21f"
+    multi_arch_index: true
+    platforms: [linux/amd64, linux/arm64, linux/ppc64le, linux/s390x]
+    license: {spdx: Apache-2.0, source: "https://github.com/strimzi/strimzi-kafka-operator", note: "Red Hat UBI 9 minimal base: UBI EULA (non-OSI layer)"}
+    signature: {mode: keyless, format: sigstore-bundle-oci-referrer, bundles: 3, identity: "https://github.com/strimzi/strimzi-kafka-operator/.github/workflows/release.yml@refs/heads/release-1.2.x", issuer: "https://token.actions.githubusercontent.com"}
+    sbom: {attached: false, note: "not attached; published as release asset strimzi-sbom-1.2.0.tar.gz"}
+    note: "cluster, topic and user operators"
+  - id: strimzi-kafka
+    component: strimzi
+    use: used
+    pin: spec
+    ref: "quay.io/strimzi/kafka:1.2.0-kafka-4.3.1"
+    registry: quay.io
+    repository: strimzi/kafka
+    tag: "1.2.0-kafka-4.3.1"
+    digest: "sha256:fef34b5438e8556cc08c01f3e254e47346f061b53a4e38d4289853777e0ea7f1"
+    multi_arch_index: true
+    platforms: [linux/amd64, linux/arm64, linux/ppc64le, linux/s390x]
+    license: {spdx: Apache-2.0, source: "https://github.com/strimzi/strimzi-kafka-operator", note: "Red Hat UBI 9 minimal base: UBI EULA (non-OSI layer)"}
+    signature: {mode: keyless, format: sigstore-bundle-oci-referrer, bundles: 3, identity: "https://github.com/strimzi/strimzi-kafka-operator/.github/workflows/release.yml@refs/heads/release-1.2.x", issuer: "https://token.actions.githubusercontent.com"}
+    sbom: {attached: false, note: "not attached; published as release asset strimzi-sbom-1.2.0.tar.gz"}
+    note: "Kafka + Connect base; newest Kafka supported by Strimzi 1.2.0"
+  - id: strimzi-kafka-bridge
+    component: strimzi
+    use: default-unused
+    pin: chart-default
+    ref: "quay.io/strimzi/kafka-bridge:1.1.0"
+    registry: quay.io
+    repository: strimzi/kafka-bridge
+    tag: "1.1.0"
+    digest: "sha256:3a03af635b3ba64505527864bd0f6ad7b5118637491d8a5b32be78e11733e65a"
+    multi_arch_index: true
+    platforms: [linux/amd64, linux/arm64, linux/ppc64le, linux/s390x]
+    license: {spdx: Apache-2.0, source: "https://github.com/strimzi/strimzi-kafka-bridge", note: "Red Hat UBI 9 minimal base: UBI EULA"}
+    signature: {mode: keyless, format: sigstore-bundle-oci-referrer, bundles: 3, identity: "https://github.com/strimzi/strimzi-kafka-bridge/.github/workflows/release.yml@refs/heads/release-1.1.x", issuer: "https://token.actions.githubusercontent.com"}
+    sbom: {attached: false, note: "not attached; published as release asset strimzi-sbom-1.2.0.tar.gz"}
+  - id: strimzi-buildah
+    component: strimzi
+    use: default-unused
+    pin: chart-default
+    ref: "quay.io/strimzi/buildah:1.2.0"
+    registry: quay.io
+    repository: strimzi/buildah
+    tag: "1.2.0"
+    digest: "sha256:3ac4d8fde6eca2ad837dc5258390f5ea704949b0539c77a394eb33a63c806b97"
+    multi_arch_index: true
+    platforms: [linux/amd64, linux/arm64, linux/ppc64le, linux/s390x]
+    license: {spdx: Apache-2.0, source: "https://github.com/strimzi/strimzi-kafka-operator", note: "mirrors a Fedora buildah image (label license MIT); Fedora packages"}
+    signature: {mode: keyless, format: sigstore-bundle-oci-referrer, bundles: 430, identity: "https://github.com/strimzi/strimzi-kafka-operator/.github/workflows/build.yml@refs/heads/main", issuer: "https://token.actions.githubusercontent.com"}
+    sbom: {attached: false, note: "not attached; published as release asset strimzi-sbom-1.2.0.tar.gz"}
+    note: "Strimzi's Connect build image; unused: the lab runs no KafkaConnect build (built_images connect-iceberg has no digest)"
+  - id: strimzi-kaniko
+    component: strimzi
+    use: default-unused
+    pin: chart-default
+    ref: "quay.io/strimzi/kaniko-executor:1.2.0"
+    registry: quay.io
+    repository: strimzi/kaniko-executor
+    tag: "1.2.0"
+    digest: "sha256:ca8838eb04f394cd3ae6268d70dd9bc7852c5c603aa30ae6aff407c2c5a29639"
+    multi_arch_index: true
+    platforms: [linux/amd64, linux/arm64, linux/ppc64le, linux/s390x]
+    license: {spdx: Apache-2.0, source: "https://github.com/strimzi/strimzi-kafka-operator", note: "rebuild of kaniko (Apache-2.0)"}
+    signature: {mode: keyless, format: sigstore-bundle-oci-referrer, bundles: 375, identity: "https://github.com/strimzi/strimzi-kafka-operator/.github/workflows/build.yml@refs/heads/main", issuer: "https://token.actions.githubusercontent.com"}
+    sbom: {attached: false, note: "not attached; published as release asset strimzi-sbom-1.2.0.tar.gz"}
+    note: "Connect build (removed in 1.3.0)"
+  - id: strimzi-maven-builder
+    component: strimzi
+    use: default-unused
+    pin: chart-default
+    ref: "quay.io/strimzi/maven-builder:1.2.0"
+    registry: quay.io
+    repository: strimzi/maven-builder
+    tag: "1.2.0"
+    digest: "sha256:dc6becc287c4adc887ff404502595a635e1087c5e444803dec33a3a1dcc8cd8f"
+    multi_arch_index: true
+    platforms: [linux/amd64, linux/arm64, linux/ppc64le, linux/s390x]
+    license: {spdx: Apache-2.0, source: "https://github.com/strimzi/strimzi-kafka-operator", note: "Red Hat UBI 9 openjdk-21 base: UBI EULA"}
+    signature: {mode: keyless, format: sigstore-bundle-oci-referrer, bundles: 3, identity: "https://github.com/strimzi/strimzi-kafka-operator/.github/workflows/release.yml@refs/heads/release-1.2.x", issuer: "https://token.actions.githubusercontent.com"}
+    sbom: {attached: false, note: "not attached; published as release asset strimzi-sbom-1.2.0.tar.gz"}
+    note: "Connect build"
+  - id: airflow
+    component: airflow
+    use: used
+    pin: spec
+    ref: "docker.io/apache/airflow:3.2.2"
+    registry: docker.io
+    repository: apache/airflow
+    tag: "3.2.2"
+    digest: "sha256:bef4d135ec7b64658cf64089973edd62cab8fd72203f280c7e0952213c17d912"
+    multi_arch_index: true
+    platforms: [linux/amd64, linux/arm64]
+    license: {spdx: Apache-2.0, source: "https://github.com/apache/airflow", note: "Debian base; pgbouncer images bundle PgBouncer (ISC)"}
+    signature: {mode: none, note: "no cosign .sig tag and no sigstore referrer found on 2026-10-14"}
+    sbom: {attached: false}
+    slsa_provenance: [slsa-v1]
+    note: "chart 1.22.0 appVersion"
+  - id: airflow-redis
+    component: airflow
+    use: default-unused
+    pin: chart-default
+    ref: "docker.io/library/redis:7.2-bookworm"
+    registry: docker.io
+    repository: library/redis
+    tag: "7.2-bookworm"
+    digest: "sha256:46f15cf64fdef63e483dcda99e74e3d51c017b1175547b6bb874152ee2391aad"
+    multi_arch_index: true
+    platforms: [linux/amd64, linux/arm/v7, linux/arm64/v8, linux/386, linux/ppc64le]
+    license: {spdx: BSD-3-Clause, source: "https://github.com/redis/redis", note: "Redis 7.2 is the last BSD-3-Clause line (chart pins it for that reason); Docker official image"}
+    signature: {mode: none, note: "no cosign .sig tag and no sigstore referrer found on 2026-10-14"}
+    sbom: {attached: true, form: [buildkit-in-index-spdx]}
+    slsa_provenance: [slsa-v0.2]
+    note: "lab sets redis.enabled=false (LocalExecutor)"
+  - id: airflow-statsd
+    component: airflow
+    use: default-unused
+    pin: chart-default
+    ref: "quay.io/prometheus/statsd-exporter:v0.30.0"
+    registry: quay.io
+    repository: prometheus/statsd-exporter
+    tag: "v0.30.0"
+    digest: "sha256:378cb79c4ac7d6941e5ed71b1f3cd6f4707cf42c72c104ffe81fa4d9026ef659"
+    multi_arch_index: true
+    platforms: [linux/amd64, linux/arm64, linux/arm/v7, linux/ppc64le, linux/riscv64, linux/s390x]
+    license: {spdx: Apache-2.0, source: "https://github.com/prometheus/statsd_exporter"}
+    signature: {mode: none, note: "no cosign .sig tag and no sigstore referrer found on 2026-10-14"}
+    sbom: {attached: false}
+    note: "lab sets statsd.enabled=false"
+  - id: airflow-pgbouncer
+    component: airflow
+    use: default-unused
+    pin: chart-default
+    ref: "docker.io/apache/airflow:airflow-pgbouncer-2025.03.05-1.23.1"
+    registry: docker.io
+    repository: apache/airflow
+    tag: "airflow-pgbouncer-2025.03.05-1.23.1"
+    digest: "sha256:8fbd1a66c5f2ac851084aca910e149db9ab6baad983a20b86558287b21e3897f"
+    multi_arch_index: true
+    platforms: [linux/amd64, linux/arm64]
+    license: {spdx: Apache-2.0, source: "https://github.com/apache/airflow", note: "Debian base; pgbouncer images bundle PgBouncer (ISC)"}
+    signature: {mode: none, note: "no cosign .sig tag and no sigstore referrer found on 2026-10-14"}
+    sbom: {attached: false}
+    slsa_provenance: [slsa-v0.2]
+    note: "pgbouncer disabled by default"
+  - id: airflow-pgbouncer-exporter
+    component: airflow
+    use: default-unused
+    pin: chart-default
+    ref: "docker.io/apache/airflow:airflow-pgbouncer-exporter-2025.03.05-0.18.0"
+    registry: docker.io
+    repository: apache/airflow
+    tag: "airflow-pgbouncer-exporter-2025.03.05-0.18.0"
+    digest: "sha256:adf7260c2c5f43ca177dede61333f6c060cbbcb5c55f307c9ce796e4e490a177"
+    multi_arch_index: true
+    platforms: [linux/amd64, linux/arm64]
+    license: {spdx: Apache-2.0, source: "https://github.com/apache/airflow", note: "Debian base; pgbouncer images bundle PgBouncer (ISC)"}
+    signature: {mode: none, note: "no cosign .sig tag and no sigstore referrer found on 2026-10-14"}
+    sbom: {attached: false}
+    slsa_provenance: [slsa-v0.2]
+    note: "pgbouncer disabled by default"
+  - id: airflow-git-sync
+    component: airflow
+    use: default-unused
+    pin: chart-default
+    ref: "registry.k8s.io/git-sync/git-sync:v4.4.2"
+    registry: registry.k8s.io
+    repository: git-sync/git-sync
+    tag: "v4.4.2"
+    digest: "sha256:3089d9787b89bdc5af01d9f6e8d515aefb9672e8aea3972d7ff67478112bacb3"
+    multi_arch_index: true
+    platforms: [linux/amd64, linux/arm/v7, linux/arm64, linux/ppc64le, linux/s390x]
+    license: {spdx: Apache-2.0, source: "https://github.com/kubernetes/git-sync"}
+    signature: {mode: none, note: "no cosign .sig tag and no sigstore referrer found on 2026-10-14"}
+    sbom: {attached: false}
+    note: "dags.gitSync disabled by default"
+  - id: airflow-bitnami-postgresql
+    component: airflow
+    use: denied
+    pin: denied
+    ref: "docker.io/bitnamilegacy/postgresql:16.1.0-debian-11-r15"
+    registry: docker.io
+    repository: bitnamilegacy/postgresql
+    tag: "16.1.0-debian-11-r15"
+    digest: "sha256:29e3dd0e7e7a740eabdbae6f82673507d180701a719bbdb6d6308a58cf723e64"
+    multi_arch_index: true
+    platforms: [linux/amd64, linux/arm64]
+    license: {spdx: Apache-2.0, source: "https://github.com/bitnami/containers", note: "Bitnami legacy image, minideb bullseye"}
+    signature: {mode: none, note: "no cosign .sig tag and no sigstore referrer found on 2026-10-14"}
+    sbom: {attached: false}
+    note: "Bitnami subchart default (postgresPassword postgres); lab sets postgresql.enabled=false"
+  - id: openbao
+    component: openbao
+    use: used
+    pin: spec
+    ref: "quay.io/openbao/openbao:2.7.1"
+    registry: quay.io
+    repository: openbao/openbao
+    tag: "2.7.1"
+    digest: "sha256:6d2b93856e3fcf7b18ad855a0b51eaba474dc8b79cf554379ea32034797d2acf"
+    multi_arch_index: true
+    platforms: [linux/amd64, linux/arm64, linux/arm/v6, linux/ppc64le, linux/riscv64, linux/s390x]
+    license: {spdx: MPL-2.0, source: "https://github.com/openbao/openbao"}
+    signature: {mode: keyless, format: sigstore-bundle-oci-referrer, bundles: 4, identity: "https://github.com/openbao/openbao/.github/workflows/release-images.yml@refs/tags/v2.7.1", issuer: "https://token.actions.githubusercontent.com"}
+    sbom: {attached: false}
+    slsa_provenance: [slsa-v1]
+    note: "sibling container on the kind Docker network, outside the cluster"
+  - id: lab-registry
+    component: mirror
+    use: used
+    pin: chosen
+    ref: "docker.io/library/registry:3.1.2"
+    registry: docker.io
+    repository: library/registry
+    tag: "3.1.2"
+    digest: "sha256:82f6ff4a7f982960c8aa51617fea3aabc485df6e55cce80d22deb1de36f1bc3c"
+    multi_arch_index: true
+    platforms: [linux/amd64, linux/arm/v6, linux/arm/v7, linux/arm64, linux/ppc64le, linux/riscv64, linux/s390x]
+    license: {spdx: Apache-2.0, source: "https://github.com/distribution/distribution"}
+    signature: {mode: none, note: "no cosign .sig tag and no sigstore referrer found on 2026-11-18"}
+    sbom: {attached: true, form: [buildkit-in-index-spdx]}
+    slsa_provenance: [slsa-v0.2]
+    note: "`lab mirror` registry (distribution v3.1.2, resolved 2026-11-18): a sibling container bound to 127.0.0.1, one per machine; kind's local-registry pattern. The only image `lab mirror` pulls from upstream for itself."
+  - id: kafbat-ui
+    component: kafbat-ui
+    use: optional
+    pin: spec
+    ref: "ghcr.io/kafbat/kafka-ui:v1.5.0"
+    registry: ghcr.io
+    repository: kafbat/kafka-ui
+    tag: "v1.5.0"
+    digest: "sha256:7cda86a33344160309fdb65146332e4da65db81a945614f2fe32e210803f6fd1"
+    multi_arch_index: true
+    platforms: [linux/amd64, linux/arm64]
+    license: {spdx: Apache-2.0, source: "https://github.com/kafbat/kafka-ui"}
+    signature: {mode: none, note: "no cosign .sig tag and no sigstore referrer found on 2026-10-14"}
+    sbom: {attached: true, form: [buildkit-in-index-spdx]}
+    slsa_provenance: [slsa-v1]
+    note: "off by default"
+  - id: superset
+    component: superset
+    use: optional
+    pin: spec
+    ref: "docker.io/apache/superset:6.1.0"
+    registry: docker.io
+    repository: apache/superset
+    tag: "6.1.0"
+    digest: "sha256:16b50bbef6648912a79e3293d418fefa743ce555d36c5af6b85d859119ed7f88"
+    multi_arch_index: true
+    platforms: [linux/arm64, linux/amd64]
+    license: {spdx: Apache-2.0, source: "https://github.com/apache/superset"}
+    signature: {mode: none, note: "no cosign .sig tag and no sigstore referrer found on 2026-10-14"}
+    sbom: {attached: false}
+    slsa_provenance: [slsa-v1]
+    note: "override: chart default pulls through apachesuperset.docker.scarf.sh (Scarf download-analytics proxy); off by default"
+  - id: superset-chart-default
+    component: superset
+    use: denied
+    pin: denied
+    ref: "apachesuperset.docker.scarf.sh/apache/superset:6.1.0"
+    registry: apachesuperset.docker.scarf.sh
+    repository: apache/superset
+    tag: "6.1.0"
+    digest: "sha256:16b50bbef6648912a79e3293d418fefa743ce555d36c5af6b85d859119ed7f88"
+    multi_arch_index: true
+    platforms: [linux/arm64, linux/amd64]
+    license: {spdx: Apache-2.0, source: "https://github.com/apache/superset"}
+    signature: {mode: none, note: "no cosign .sig tag and no sigstore referrer found on 2026-10-14"}
+    sbom: {attached: false}
+    slsa_provenance: [slsa-v1]
+    note: "Scarf analytics pull-through proxy; lab overrides to docker.io/apache/superset"
+  - id: superset-bitnami-postgresql
+    component: superset
+    use: denied
+    pin: denied
+    ref: "docker.io/bitnamilegacy/postgresql:14.17.0-debian-12-r3"
+    registry: docker.io
+    repository: bitnamilegacy/postgresql
+    tag: "14.17.0-debian-12-r3"
+    digest: "sha256:769d9d755a41e845d00c8eda9bd2c0945ee9c437d64cc215db7a4bd05cd17f17"
+    multi_arch_index: true
+    platforms: [linux/amd64, linux/arm64]
+    license: {spdx: Apache-2.0, source: "https://github.com/bitnami/containers", note: "Bitnami legacy image"}
+    signature: {mode: none, note: "no cosign .sig tag and no sigstore referrer found on 2026-10-14"}
+    sbom: {attached: false}
+    note: "Bitnami subchart default"
+  - id: superset-bitnami-redis
+    component: superset
+    use: denied
+    pin: denied
+    ref: "docker.io/bitnamilegacy/redis:7.0.10-debian-11-r4"
+    registry: docker.io
+    repository: bitnamilegacy/redis
+    tag: "7.0.10-debian-11-r4"
+    digest: "sha256:224a79826b42869bdc72a70933efd840c5a5f10a70caafca68e57be6901e36fb"
+    multi_arch_index: true
+    platforms: [linux/amd64, linux/arm64]
+    license: {spdx: Apache-2.0, source: "https://github.com/bitnami/containers", note: "Bitnami legacy image"}
+    signature: {mode: none, note: "no cosign .sig tag and no sigstore referrer found on 2026-10-14"}
+    sbom: {attached: false}
+    note: "Bitnami subchart default"
+
+# Images the lab builds itself. `digest` stays null: the lab publishes no
+# image. fluid-runner, airflow-fluid and spark-iceberg are built on the
+# operator's machine by `lab build` and loaded into the lab's kind node;
+# connect-iceberg is not built, and no tier needs it.
+built_images:
+  - id: connect-iceberg
+    component: strimzi
+    use: used
+    base: {ref: "quay.io/strimzi/kafka:1.2.0-kafka-4.3.1", digest: "sha256:fef34b5438e8556cc08c01f3e254e47346f061b53a4e38d4289853777e0ea7f1"}
+    adds: "Apache Iceberg Kafka Connect sink 1.12.0"
+    digest: null
+    note: "Not built: the lab has no build for it, so digest stays null, and the streaming tier runs no KafkaConnect. A build derives from a UBI image and must ship the UBI EULA. The Iceberg 1.12.0 sink on the Kafka 4.x Connect runtime is unverified."
+  - id: fluid-runner
+    component: runner
+    use: used
+    base: {ref: "docker.io/library/python:3.13.18-slim-trixie", digest: "sha256:e48f59cdba69a3cbd9ed2cf0f348d90d45a8d350d98134cf1070bc106ee9ed90"}
+    digest: null
+    contents: {forge: {version: 0.37.0, commit: c826f3ae698493dd43aaa00a1dc63bafb29dba52, sha256: eef0f5ac28a52a4e05699ae33f57c7d4f6b835a005b8f5e5735a9662c906dde9, release: true}, dbt-core: 1.10.23, dbt-trino: 1.10.6, duckdb: 1.5.6, opentofu: 1.13.1, providers: {apache/iceberg: v0.1.0, baptistegh/lakekeeper: v0.4.10, keycloak/keycloak: v5.10.0, hashicorp/kubernetes: v3.3.0}}
+    note: "Built by `lab build fluid-runner` from platform/images/fluid-runner on the operator's machine and loaded into the lab's kind node; never pushed, so digest stays null. forge is built from the Agenticstiger/forge-cli source archive of its release commit (tag v0.37.0), checked against `contents.forge.sha256` and built with --no-deps --no-build-isolation by hashed build tools. Every other Python distribution, forge's dependencies included, is installed with --require-hashes; OpenTofu checked against its release sha256; providers from a baked mirror that `tofu init` checks against the committed lock. FLUID_COMMAND_CENTER_ENABLED, DBT_SEND_ANONYMOUS_USAGE_STATS and DBT_VERSION_CHECK are false."
+  - id: airflow-fluid
+    component: airflow
+    use: used
+    base: {ref: "docker.io/apache/airflow:3.2.2", digest: "sha256:bef4d135ec7b64658cf64089973edd62cab8fd72203f280c7e0952213c17d912"}
+    digest: null
+    contents: {pins_from: fluid-runner, airflow: 3.2.2}
+    note: "Built by `lab build airflow-fluid` from platform/images/airflow-fluid on the operator's machine and loaded into the lab's kind node; never pushed, so digest stays null. The base is the `airflow` image above (the chart's appVersion), by digest. forge, dbt-core, dbt-trino and DuckDB are the fluid-runner pins (`pins_from`: one place to bump them), installed with the same hashed requirements into their own venv, /opt/fluid/venv, so Airflow's own package pins are untouched; `fluid` and `dbt` are on PATH through symlinks. DAG bundles come from S3 on SeaweedFS (apache-airflow-providers-amazon's S3DagBundle, an S3 client), tasks run `fluid apply`."
+  - id: spark-iceberg
+    component: spark
+    use: used
+    base: {ref: "docker.io/apache/spark:3.5.8-scala2.12-java17-python3-ubuntu", digest: "sha256:dbe5f3b3926b01fa0b818ae8463c2994bfd2945d8db96d2337e23dc62d6fa73d"}
+    digest: null
+    contents:
+      spark: 3.5.8
+      iceberg: 1.12.0
+      kafka-connector: 3.5.8
+      # Every file the build adds to the base. `id` names the Dockerfile's <ID>_URL and <ID>_SHA256 build args
+      # (upper case, `-` as `_`); `lab build` passes them from here and the probe compares the image with them.
+      # `path` is where the file lands, and a test keeps the Dockerfile's ADD lines equal to it.
+      files:
+        - {id: iceberg-spark-runtime, coordinate: "org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.12.0", url: "https://repo1.maven.org/maven2/org/apache/iceberg/iceberg-spark-runtime-3.5_2.12/1.12.0/iceberg-spark-runtime-3.5_2.12-1.12.0.jar", path: /opt/lab/jars/iceberg-spark-runtime-3.5_2.12-1.12.0.jar, sha256: 8dd8c90e54ed1a20f2461309d047a255ee56382eb7c0a46162b27a4936fd86dc}
+        - {id: iceberg-aws-bundle, coordinate: "org.apache.iceberg:iceberg-aws-bundle:1.12.0", url: "https://repo1.maven.org/maven2/org/apache/iceberg/iceberg-aws-bundle/1.12.0/iceberg-aws-bundle-1.12.0.jar", path: /opt/lab/jars/iceberg-aws-bundle-1.12.0.jar, sha256: dd7e49ffa4ac9b215bed846581991259e3aec9bb2fa08d6cec029c46cd66d957}
+        - {id: hadoop-aws, coordinate: "org.apache.hadoop:hadoop-aws:3.3.4", url: "https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-aws/3.3.4/hadoop-aws-3.3.4.jar", path: /opt/spark/jars/hadoop-aws-3.3.4.jar, sha256: 53f9ae03c681a30a50aa17524bd9790ab596b28481858e54efd989a826ed3a4a}
+        - {id: aws-java-sdk-bundle, coordinate: "com.amazonaws:aws-java-sdk-bundle:1.12.262", url: "https://repo1.maven.org/maven2/com/amazonaws/aws-java-sdk-bundle/1.12.262/aws-java-sdk-bundle-1.12.262.jar", path: /opt/spark/jars/aws-java-sdk-bundle-1.12.262.jar, sha256: 873fe7cf495126619997bec21c44de5d992544aea7e632fdc77adb1a0915bae5}
+        - {id: kafka-clients, coordinate: "org.apache.kafka:kafka-clients:3.4.1", url: "https://repo1.maven.org/maven2/org/apache/kafka/kafka-clients/3.4.1/kafka-clients-3.4.1.jar", path: /opt/spark/jars/kafka-clients-3.4.1.jar, sha256: 9d0a9058c8ede79db6e54ae378ed16fe8d1bead2894635a4aa6aa0b7981668c6}
+        - {id: commons-pool2, coordinate: "org.apache.commons:commons-pool2:2.11.1", url: "https://repo1.maven.org/maven2/org/apache/commons/commons-pool2/2.11.1/commons-pool2-2.11.1.jar", path: /opt/spark/jars/commons-pool2-2.11.1.jar, sha256: ea0505ee7515e58b1ac0e686e4d1a5d9f7d808e251a61bc371aa0595b9963f83}
+        - {id: spark-token-provider-kafka, coordinate: "org.apache.spark:spark-token-provider-kafka-0-10_2.12:3.5.8", url: "https://repo1.maven.org/maven2/org/apache/spark/spark-token-provider-kafka-0-10_2.12/3.5.8/spark-token-provider-kafka-0-10_2.12-3.5.8.jar", path: /opt/spark/jars/spark-token-provider-kafka-0-10_2.12-3.5.8.jar, sha256: 85f44359b60943d262f37d1327ebb7931fe47e0392286fe3023299e25b84b0d8}
+        - {id: spark-sql-kafka-jar, coordinate: "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.8", url: "https://repo1.maven.org/maven2/org/apache/spark/spark-sql-kafka-0-10_2.12/3.5.8/spark-sql-kafka-0-10_2.12-3.5.8.jar", path: /opt/lab/maven/org/apache/spark/spark-sql-kafka-0-10_2.12/3.5.8/spark-sql-kafka-0-10_2.12-3.5.8.jar, sha256: d2b7068eabce2a1267103625e58efae32f7ee384db1cbc22424532ad2ed95fb4}
+        - {id: spark-sql-kafka-pom, coordinate: "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.8:pom", url: "https://repo1.maven.org/maven2/org/apache/spark/spark-sql-kafka-0-10_2.12/3.5.8/spark-sql-kafka-0-10_2.12-3.5.8.pom", path: /opt/lab/maven/org/apache/spark/spark-sql-kafka-0-10_2.12/3.5.8/spark-sql-kafka-0-10_2.12-3.5.8.pom, sha256: ecc8371aaf7f499f6e5c004d492b977f354021abd9c32f1934a8c807667cb7bf}
+        - {id: spark-parent-pom, coordinate: "org.apache.spark:spark-parent_2.12:3.5.8:pom", url: "https://repo1.maven.org/maven2/org/apache/spark/spark-parent_2.12/3.5.8/spark-parent_2.12-3.5.8.pom", path: /opt/lab/maven/org/apache/spark/spark-parent_2.12/3.5.8/spark-parent_2.12-3.5.8.pom, sha256: 6f13406a80899afe88f7069c3c883b7e4fb823b2377ef43ac7bd7b3b33ea1189}
+        - {id: apache-parent-pom, coordinate: "org.apache:apache:18:pom", url: "https://repo1.maven.org/maven2/org/apache/apache/18/apache-18.pom", path: /opt/lab/maven/org/apache/apache/18/apache-18.pom, sha256: 7831307285fd475bbc36b20ae38e7882f11c3153b1d5930f852d44eda8f33c17}
+    note: "Built by `lab build spark-iceberg` from platform/images/spark-iceberg on the operator's machine and loaded into the lab's kind node; never pushed, so digest stays null. The base is the official apache/spark 3.5.8 image (Scala 2.12, Java 17, Python 3, Ubuntu 22.04; amd64 and arm64), by index digest, run as uid 185. Every file above is fetched from Maven Central with ADD --checksum; each sha256 was computed locally on 2026-11-22 and its Maven .sha1 cross-checked. Iceberg 1.12.0 and the Spark 3.5.8 Kafka connector were proven on a live lab the same day: Iceberg through Lakekeeper's REST catalog (OAuth2 client credentials, vended credentials), S3A on SeaweedFS, and the connector resolved offline by spark.jars.packages from /opt/lab/maven with no network. It is the open runtime of the spark tier: no AWS credentials, no AWS Content. All of it is Apache-2.0."
+
+# Newer patch releases recorded for the soak. NOT in use; nothing renders them.
+candidates:
+  - component: strimzi
+    replaces: "1.2.0"
+    version: "1.3.0"
+    released: "2026-10-12"
+    chart: {name: strimzi-kafka-operator, version: 1.3.0, sha256: 42677cec73d2122f4a395d9891bbccfae18ec16b3582174d49ca04695f351192, vendored: false}
+    images:
+      - {ref: "quay.io/strimzi/operator:1.3.0", digest: "sha256:4deb564fa329afa4046c550a6f8f1a6d00be3b9297e556969acabe6647b6676f"}
+      - {ref: "quay.io/strimzi/kafka:1.3.0-kafka-4.3.1", digest: "sha256:1f189b1f0f32684302d8b018b1d21b411e2469a9c465fbdc18fa3599cb5bbdad"}
+    note: "Kubernetes >= 1.32; Kaniko removed (Buildah only)."
+  - component: keycloak
+    replaces: "26.8.0"
+    version: "26.8.1"
+    released: "2026-10-13"
+    manifests: {repo: "https://github.com/keycloak/keycloak-k8s-resources", ref: "26.8.1", commit: 999a1d4e23b74eab7704426058b535a9e2a416e3, vendored: false}
+    images:
+      - {ref: "quay.io/keycloak/keycloak-operator:26.8.1", digest: "sha256:60996d513b9e9945657b348655c98071c366bb0212deefa1508785941b1651dc"}
+      - {ref: "quay.io/keycloak/keycloak:26.8.1", digest: "sha256:79c623a22abacf3fe6c00a5fb30f5b7843d717b234033b80995891c06116d244"}
+  - component: opa
+    replaces: "1.21.1"
+    version: "1.21.2"
+    released: "2026-10-12"
+    images:
+      - {ref: "docker.io/openpolicyagent/opa:1.21.2-static", digest: "sha256:0843d2adce51655422e8b95a803629ab9f424803c4bd27876e7f44cce9a2b84d"}
+  - component: openfga
+    replaces: "v1.21.0"
+    version: "v1.22.0"
+    released: "2026-10-06"
+    chart: {name: openfga, version: 0.3.16, sha256: 8600f992fd524334c82b7ffeea98314c39896bff536326f2c08a93cc874bf12d, vendored: false}
+    images:
+      - {ref: "docker.io/openfga/openfga:v1.22.0", digest: "sha256:9cf9a20af32a40434cd3a788c429879439ee9ea9abf65c9c200ee17cd43f769e"}
+    note: "Four OpenFGA versions are in play (v1.14 Lakekeeper examples, v1.18.1 Lakekeeper chart dependency, v1.21.0 pinned, v1.22.0 latest). The pin v1.21.0 is in use."
+
+# CI tool pins. Version + upstream checksum file; the linux/amd64 sha256 is
+# copied from that file (2026-10-14) so CI can verify without trusting the
+# download host alone. `local_observed` is what the author ran.
+tools:
+  - name: helm
+    version: v3.22.0
+    pin: spec
+    released: "2026-09-10"
+    checksum_url: "https://get.helm.sh/helm-v3.22.0-linux-amd64.tar.gz.sha256sum"
+    linux_amd64: {file: helm-v3.22.0-linux-amd64.tar.gz, sha256: 1e4ab49e429626cf6c6958d914248b78c9730803c2751b87627e171dc800e7bb}
+    signature: "PGP .asc per artefact on the GitHub release (helm KEYS)"
+    local_observed: v4.3.0
+    note: "The lab pins Helm 3; Helmfile with Helm 4 is unverified. Renders were checked with v4.3.0 locally; CI uses v3.22.0."
+  - name: helm-diff
+    version: v3.15.15
+    pin: spec
+    released: "2026-09-26"
+    checksum_url: "https://github.com/databus23/helm-diff/releases/download/v3.15.15/helm-diff_3.15.15_checksums.txt"
+    linux_amd64: {file: helm-diff-linux-amd64.tgz, sha256: 504e99410611daa70702362e1b10dc74929df8a912cb3f6b5d21d1ee9d0cb7d9}
+    note: "Helmfile needs it for diff/apply; not for template."
+  - name: helmfile
+    version: v1.8.1
+    pin: spec
+    released: "2026-09-30"
+    checksum_url: "https://github.com/helmfile/helmfile/releases/download/v1.8.1/helmfile_1.8.1_checksums.txt"
+    linux_amd64: {file: helmfile_1.8.1_linux_amd64.tar.gz, sha256: ccabbe75dddbc25008d055fe92a44f95a184342211e7244d32b870409239c7a3}
+    local_observed: v1.8.1
+  - name: kind
+    version: v0.33.0
+    pin: spec
+    released: "2026-08-26"
+    checksum_url: "https://github.com/kubernetes-sigs/kind/releases/download/v0.33.0/kind-linux-amd64.sha256sum"
+    linux_amd64: {file: kind-linux-amd64, sha256: aee6151561422756b764a4ae28e7f44cda5af5a9eead3cc9985112b1de8d8e0d}
+    local_observed: v0.33.0
+  - name: kubeconform
+    version: v0.8.0
+    pin: chosen
+    released: "2026-06-04"
+    checksum_url: "https://github.com/yannh/kubeconform/releases/download/v0.8.0/CHECKSUMS"
+    linux_amd64: {file: kubeconform-linux-amd64.tar.gz, sha256: 9bc2bffbf71f261128533edaf912153948b7ff238f9a531ae6d34466ec287883}
+    local_observed: v0.8.0
+  - name: gitleaks
+    version: v8.30.1
+    pin: chosen
+    released: "2026-03-21"
+    checksum_url: "https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_checksums.txt"
+    linux_amd64: {file: gitleaks_8.30.1_linux_x64.tar.gz, sha256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb}
+    local_observed: v8.30.1
+  - name: reuse
+    version: 6.2.0
+    pin: chosen
+    released: "2025-10-27"
+    install: "pip install --require-hashes reuse==6.2.0 (PyPI; GPL-3.0-or-later tool, run only, never vendored)"
+    checksum_url: "https://pypi.org/pypi/reuse/6.2.0/json"
+    sdist: {file: reuse-6.2.0.tar.gz, sha256: 4feae057a2334c9a513e6933cdb9be819d8b822f3b5b435a36138bd218897d23}
+    wheel_cp310_linux_x86_64: {file: reuse-6.2.0-cp310-cp310-manylinux_2_41_x86_64.whl, sha256: 12b68549bb9d5f4957f06d726a83a9780628810008fb732bb0d0f21607f8c6d6}
+    local_observed: "6.2.0"
+    note: "Its runtime dependencies need their own hashes in a requirements file."
+  - name: trivy
+    version: v0.74.0
+    pin: chosen
+    released: "2026-08-14"
+    checksum_url: "https://github.com/aquasecurity/trivy/releases/download/v0.74.0/trivy_0.74.0_checksums.txt"
+    linux_amd64: {file: trivy_0.74.0_Linux-64bit.tar.gz, sha256: 2ae6fe3ee734b7fdf11335663e18c75ea12dccc76062f09f164a3b0f8be4371a}
+    signature: "sigstore bundle per checksums file (trivy_<v>_checksums.txt.sigstore.json); verify keyless against the aquasecurity/trivy release workflow"
+    local_observed: v0.71.0
+    note: "Newest release at least 14 days old on 2026-10-14 (v0.75.0 is 13 days old, v0.76.0 is from today: candidates)."
+  - name: crane
+    version: v0.22.1
+    pin: chosen
+    released: "2026-09-04"
+    checksum_url: "https://github.com/google/go-containerregistry/releases/download/v0.22.1/checksums.txt"
+    linux_amd64: {file: go-containerregistry_Linux_x86_64.tar.gz, sha256: 0ab7a1d6932a213aed964ce97666c3077fe691c8606413674a8b3e0b9ec4cda0}
+    local_observed: v0.22.1
+  - name: yq
+    version: v4.54.1
+    pin: chosen
+    released: "2026-09-29"
+    checksum_url: "https://github.com/mikefarah/yq/releases/download/v4.54.1/checksums"
+    checksum_format: "multi-hash table; SHA-256 is hash #18 per checksums_hashes_order (column 19); upstream extract-checksum.sh reads it"
+    linux_amd64: {file: yq_linux_amd64, sha256: 8e34fc298390875de416e6a4afcb8cabeceb25d9aa8506c1a2f9353cf702ea5f}
+    local_observed: v4.54.1
+  - name: opa
+    version: v1.21.2
+    pin: chosen
+    released: "2026-10-12"
+    checksum_url: "https://github.com/open-policy-agent/opa/releases/download/v1.21.2/opa_linux_amd64_static.sha256"
+    linux_amd64: {file: opa_linux_amd64_static, sha256: 830ab11f61ffec760b5e19db0d7ad02bf037e13f5ef4d665faeaf17632177527}
+    local_observed: v1.21.3
+    note: "Runs `opa test platform/policy/trino-lab` (the Trino access policy's unit tests). Same release as the OPA sidecar image (1.21.2); the sha256 is the one OPA publishes beside the binary (2026-11-19)."
+
+# Offline kubeconform schemas (platform/schemas). `regenerate.sh verify` checks
+# platform/schemas/SHA256SUMS with no network.
+schemas:
+  kubernetes:
+    source: "https://github.com/yannh/kubernetes-json-schema"
+    commit: 817113f21a2643311cbc3e992bb44ffe1c416c54
+    commit_date: "2026-10-11"
+    version: v1.36.4
+    flavour: standalone-strict
+    path: platform/schemas/kubernetes/v1.36.4-standalone-strict
+    kinds: platform/schemas/kubernetes/kinds.txt
+    license: {spdx: Apache-2.0, text: platform/schemas/kubernetes/LICENSE}
+    missing_upstream: ["apiextensions.k8s.io/v1 CustomResourceDefinition"]
+  crds:
+    path: platform/schemas/crds
+    layout: "{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json"
+    generator: platform/schemas/tools/crd2jsonschema.py
+    generator_derived_from: {repo: "https://github.com/yannh/kubeconform", path: scripts/openapi2jsonschema.py, ref: v0.8.0, license: Apache-2.0}
+    inputs: "CRDs rendered offline from every chart with crd_render_args (cert-manager, trust-manager, gateway-helm, cloudnative-pg, strimzi-kafka-operator, keycloak-operator)"
+  kubeconform_flags: >-
+    -strict -kubernetes-version 1.36.4
+    -schema-location 'platform/schemas/kubernetes/{{ .NormalizedKubernetesVersion }}-standalone{{ .StrictSuffix }}/{{ .ResourceKind }}{{ .KindSuffix }}.json'
+    -schema-location 'platform/schemas/crds/{{ .Group }}/{{ .ResourceKind }}_{{ .ResourceAPIVersion }}.json'
+
+# What is not pinned, and why. Each is a hard stop for the stage that
+# needs it, never a silent skip.
+not_pinned:
+  - {item: "quay.io/vakamo/lakekeeper-plus", reason: "denied by policy (licensed edition); not resolved on purpose"}
+  - {item: "connect-iceberg and fluid-runner images", reason: "no published digest (the lab publishes no image): fluid-runner is built on the operator's machine by `lab build` and never pushed; connect-iceberg is not built; digest null above"}
+  - {item: "OpenTelemetry Collector", reason: "optional add-on with no pinned version; pin it when the add-on is added"}
+  - {item: "publish registrar (OpenMetadata or DataHub)", reason: "optional, heavy, no pinned version"}
+  - {item: "Rook-Ceph (lab-ceph profile)", reason: "separate opt-in profile (Rook v1.20.8); outside this chart set"}
+  - {item: "OpenTofu providers and dbt/DuckDB wheels", reason: "pinned in platform/images/fluid-runner (tofu/.terraform.lock.hcl; requirements.txt, every wheel by sha256), not here"}

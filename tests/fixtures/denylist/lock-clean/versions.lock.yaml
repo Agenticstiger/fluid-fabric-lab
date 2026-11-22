@@ -1,0 +1,15 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# Clean lock: one used image pinned by digest, one bitnamilegacy record marked
+# `use: denied` (recorded only, never rendered). The denylist gate must PASS.
+lock_version: 1
+images:
+  - id: ok
+    use: used
+    ref: "quay.io/example/tool:1.2.3"
+    digest: "sha256:aaa9402664f1a41f40ebbc52c9993eb66aeb366602958fdfaa283b71e64db123"
+  - id: chart-default-db
+    use: denied
+    ref: "docker.io/bitnamilegacy/postgresql:16.1.0-debian-11-r15"
+    digest: "sha256:ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb"

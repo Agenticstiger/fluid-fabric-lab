@@ -1,0 +1,8 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+version = 1
+
+[[annotations]]
+path = ["platform/charts/good-chart-0.1.0.tgz"]
+SPDX-FileCopyrightText = "2026 Agentics Transformation Limited"
+SPDX-License-Identifier = "Apache-2.0"

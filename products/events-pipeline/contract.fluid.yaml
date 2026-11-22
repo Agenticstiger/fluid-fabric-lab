@@ -1,0 +1,146 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# The lab's example product: a raw Kafka stream, a daily Spark SQL batch and an
+# hourly dbt model, in one contract. Shape borrowed from forge's own
+# `events_pipeline` graph (tests/schedulers/fluid_apply_fixtures.py).
+#
+# It runs only on the lab (`--env local`): forge's Spark runner on the lab's open
+# Spark image (runtime local), Lakekeeper (Iceberg REST) on SeaweedFS, the lab's
+# Strimzi Kafka and dbt-trino. `environments` declares `local` alone, so any
+# other `--env` is refused. The operator's allowlists for it are in
+# profiles/lab-kind/operator/local.env; a contract cannot list itself.
+fluidVersion: "0.7.7"
+kind: DataProduct
+id: lab.events-pipeline
+name: Events pipeline
+description: >-
+  Raw events from Kafka, a daily count per event date, and an hourly activity
+  mart: one stream, one Spark SQL batch and one dbt model.
+domain: lab
+metadata:
+  layer: Gold
+  owner:
+    team: data-platform
+environments:
+  local: {}
+builds:
+  - id: stream-raw
+    description: Kafka topic events.source to the raw Iceberg table, every minute.
+    engine: spark
+    pattern: embedded-logic
+    outputs: [events_raw]
+    properties:
+      stream:
+        kind: kafka
+        topic: events.source
+        format: json
+        schema:
+          - {name: event_id, type: string, required: true}
+          - {name: user_id, type: string}
+          - {name: event_time, type: timestamp_ltz(3)}
+        trigger:
+          processingTime: PT1M
+        watermark:
+          column: event_time
+          delay: PT10M
+        checkpoint: s3://lab-spark-artifacts/_checkpoints/lab.events-pipeline/stream-raw/
+        startingOffsets: earliest
+      mapping:
+        columns:
+          - {name: event_id, from: event_id}
+          - {name: user_id, from: user_id}
+          - {name: event_time, from: event_time}
+      parameters:
+        spark:
+          runtime: local
+          mode: streaming
+          source:
+            bootstrapServers: lab-kafka-kafka-bootstrap.kafka.svc:9092
+            auth: none
+  - id: daily-curated
+    description: Events per event date, from the raw table, every night.
+    engine: spark
+    pattern: embedded-logic
+    outputs: [events_daily]
+    dependencies:
+      - buildId: stream-raw
+    execution:
+      trigger:
+        type: schedule
+        schedule: "0 2 * * *"
+    properties:
+      sql: >-
+        SELECT CAST(event_time AS DATE) AS event_date, COUNT(*) AS events
+        FROM events_raw.events GROUP BY CAST(event_time AS DATE)
+      parameters:
+        spark:
+          runtime: local
+          mode: batch
+  - id: hourly-marts
+    description: Events and users per hour from the raw table, with the day's total from the daily table (dbt).
+    engine: dbt-trino
+    pattern: hybrid-reference
+    repository: ./dbt
+    outputs: [events_hourly]
+    execution:
+      runtime:
+        platform: local
+      # Hourly on the clock. forge makes an Airflow asset of an expose's
+      # location.path, and a table in an Iceberg REST catalog has none, so there
+      # is no data-aware trigger.
+      trigger:
+        type: schedule
+        schedule: "0 * * * *"
+    properties:
+      model: events_hourly
+      target: local
+exposes:
+  - exposeId: events_raw
+    kind: table
+    binding:
+      platform: local
+      format: iceberg
+      location:
+        catalog: lakekeeper
+        uri: "https://lakekeeper.lab.test/catalog"
+        warehouse: sales-wh
+        database: events_raw
+        table: events
+    contract:
+      schema:
+        - {name: event_id, type: string, required: true}
+        - {name: user_id, type: string}
+        - {name: event_time, type: timestamp_ltz(3)}
+  - exposeId: events_daily
+    kind: table
+    binding:
+      platform: local
+      format: iceberg
+      location:
+        catalog: lakekeeper
+        uri: "https://lakekeeper.lab.test/catalog"
+        warehouse: sales-wh
+        database: events_curated
+        table: events_daily
+    contract:
+      schema:
+        - {name: event_date, type: date, required: true}
+        - {name: events, type: bigint}
+  - exposeId: events_hourly
+    kind: table
+    binding:
+      platform: local
+      format: iceberg
+      location:
+        catalog: lakekeeper
+        uri: "https://lakekeeper.lab.test/catalog"
+        warehouse: sales-wh
+        database: events_marts
+        table: events_hourly
+    contract:
+      schema:
+        - {name: event_hour, type: timestamp, required: true}
+        - {name: events, type: bigint}
+        - {name: users, type: bigint}
+        - {name: day_events, type: bigint}

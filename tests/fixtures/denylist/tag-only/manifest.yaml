@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# PLANTED (tag without digest). L0 selftest: the denylist gate must FAIL.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tagonly
+  namespace: fixture
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: tagonly}
+  template:
+    metadata:
+      labels: {app: tagonly}
+    spec:
+      containers:
+        - name: main
+          image: "quay.io/example/tool:1.2.3"

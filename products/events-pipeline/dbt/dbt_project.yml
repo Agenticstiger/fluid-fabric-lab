@@ -1,0 +1,17 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# The dbt project of build hourly-marts. forge packs it into the bundle and binds
+# it to the plan (https://github.com/Agenticstiger/forge-cli/pull/972). The profile comes from the operator: the lab's
+# fluid-host supplies the Trino one in DBT_PROFILES_DIR.
+name: events_pipeline
+version: "1.0.0"
+config-version: 2
+profile: events_pipeline
+model-paths: ["models"]
+macro-paths: ["macros"]
+models:
+  events_pipeline:
+    marts:
+      +materialized: table
+      +schema: events_marts

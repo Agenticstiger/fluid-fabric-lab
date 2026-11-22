@@ -1,0 +1,13 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+# PLANTED: the 8G heap moved to additionalJVMConfig as
+# -XX:MaxHeapSize, container limits removed, two workers. footprint must FAIL:
+# every container needs a memory limit, and the heap flag is read wherever it is.
+server:
+  workers: 2
+coordinator:
+  additionalJVMConfig: ["-XX:MaxHeapSize=8g"]
+  resources: {limits: null}
+worker:
+  additionalJVMConfig: ["-XX:MaxHeapSize=8g"]
+  resources: {limits: null}

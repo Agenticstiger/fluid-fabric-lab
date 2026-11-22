@@ -1,0 +1,32 @@
+# SPDX-FileCopyrightText: 2026 Agentics Transformation Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# Every namespace `lab up` creates before the Helmfile runs, with the tier
+# that needs it and its Pod Security level (`lab check`
+# (i)). Every namespace warns and audits at `restricted`. `pod_security` is
+# what it ENFORCES; anything below `restricted` must say why in `exemption`,
+# and `lab check` reports each exemption. `workloads: on-demand` marks a
+# namespace that runs nothing between runs (`lab check` (ready) does not ask it
+# to). Creating the namespaces first lets
+# `lab up` place Secrets in them before any chart starts a pod.
+#
+# Measured 2026-11-18 on a running core tier with
+#   kubectl label --dry-run=server --overwrite ns <ns> pod-security.kubernetes.io/enforce=restricted
+# which lists the pods that would violate `restricted`. The four namespaces
+# that enforce `restricted` passed it; the exemptions quote what failed.
+# `tier` is one tier name or a list of them: the namespace exists in every
+# tier named (and in tiers that require one of them).
+namespaces:
+  cert-manager:         {tier: core, pod_security: restricted}
+  envoy-gateway-system: {tier: core, pod_security: restricted}
+  cnpg-system:          {tier: core, pod_security: restricted}
+  lab-db:               {tier: core, pod_security: restricted}
+  seaweedfs:            {tier: core, pod_security: baseline, exemption: "chart 4.48.0 defaults (4 pods): allowPrivilegeEscalation, capabilities, runAsNonRoot, seccompProfile unset"}
+  openfga:              {tier: core, pod_security: baseline, exemption: "chart 0.3.15 defaults: allowPrivilegeEscalation, capabilities, runAsNonRoot, seccompProfile unset"}
+  lakekeeper:           {tier: core, pod_security: baseline, exemption: "chart 0.12.0 defaults (catalog and migration pods): allowPrivilegeEscalation, capabilities, runAsNonRoot, seccompProfile unset"}
+  keycloak:             {tier: core, pod_security: baseline, exemption: "operator-managed pods (server, realm import job): allowPrivilegeEscalation, capabilities, runAsNonRoot, seccompProfile unset"}
+  trino:                {tier: core, pod_security: baseline, exemption: "chart 1.44.0 defaults: runAsNonRoot, seccompProfile unset"}
+  spark:                {tier: [spark, orchestration], pod_security: restricted, workloads: on-demand}   # `lab check --tier spark`'s Job and lab-spark-submit's pods run here on demand; fluid-host stands; the orchestration tier's scheduler may create pods here (Role airflow-spark-pods)
+  strimzi:              {tier: streaming, pod_security: baseline, exemption: "not measured: the streaming tier has not run"}
+  kafka:                {tier: streaming, pod_security: restricted}   # every Kafka, entity-operator and check Job container sets its restricted context in the CR (platform/components/kafka/values.yaml); measured 2026-11-19: all of them run under restricted
+  airflow:              {tier: orchestration, pod_security: restricted}   # chart 1.22.0 with securityContexts set in components/airflow/values.yaml; rendered offline and read against the restricted profile, not yet measured on a running lab
